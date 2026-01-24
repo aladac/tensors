@@ -240,13 +240,13 @@ def save_metadata(
     sha256_hash: str,
     local_metadata: dict[str, Any],
     civitai_data: dict[str, Any] | None,
+    output_dir: Path,
 ) -> tuple[Path, Path]:
-    """Save metadata JSON and SHA256 hash to files alongside the model."""
+    """Save metadata JSON and SHA256 hash to the specified output directory."""
     base_name = get_base_name(file_path)
-    parent = file_path.parent
 
     # Save JSON metadata
-    json_path = parent / f"{base_name}-xm.json"
+    json_path = output_dir / f"{base_name}-xm.json"
     output = {
         "file": str(file_path),
         "sha256": sha256_hash,
@@ -258,7 +258,7 @@ def save_metadata(
     json_path.write_text(json.dumps(output, indent=2))
 
     # Save SHA256 hash
-    sha_path = parent / f"{base_name}-xm.sha256"
+    sha_path = output_dir / f"{base_name}-xm.sha256"
     sha_path.write_text(f"{sha256_hash}  {file_path.name}\n")
 
     return json_path, sha_path
@@ -293,9 +293,10 @@ def main() -> int:
         help="Output results as JSON",
     )
     parser.add_argument(
-        "--save",
-        action="store_true",
-        help="Save metadata JSON and SHA256 hash alongside the model file",
+        "--save-to",
+        type=Path,
+        metavar="DIR",
+        help="Save metadata JSON and SHA256 hash to the specified directory",
     )
 
     args = parser.parse_args()
@@ -336,9 +337,16 @@ def main() -> int:
             display_results(file_path, local_metadata, sha256_hash, civitai_data)
 
         # Save files if requested
-        if args.save:
+        if args.save_to:
+            output_dir: Path = args.save_to.resolve()
+            if not output_dir.exists():
+                console.print(f"[red]Error: Output directory not found: {output_dir}[/red]")
+                return 1
+            if not output_dir.is_dir():
+                console.print(f"[red]Error: Not a directory: {output_dir}[/red]")
+                return 1
             json_path, sha_path = save_metadata(
-                file_path, sha256_hash, local_metadata, civitai_data
+                file_path, sha256_hash, local_metadata, civitai_data, output_dir
             )
             console.print()
             console.print(f"[green]Saved:[/green] {json_path}")
