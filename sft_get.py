@@ -226,6 +226,44 @@ def display_results(
     _display_civitai_data(civitai_data)
 
 
+def get_base_name(file_path: Path) -> str:
+    """Get base filename without .safetensors extension."""
+    name = file_path.name
+    for ext in (".safetensors", ".sft"):
+        if name.lower().endswith(ext):
+            return name[: -len(ext)]
+    return file_path.stem
+
+
+def save_metadata(
+    file_path: Path,
+    sha256_hash: str,
+    local_metadata: dict[str, Any],
+    civitai_data: dict[str, Any] | None,
+) -> tuple[Path, Path]:
+    """Save metadata JSON and SHA256 hash to files alongside the model."""
+    base_name = get_base_name(file_path)
+    parent = file_path.parent
+
+    # Save JSON metadata
+    json_path = parent / f"{base_name}-xm.json"
+    output = {
+        "file": str(file_path),
+        "sha256": sha256_hash,
+        "header_size": local_metadata["header_size"],
+        "tensor_count": local_metadata["tensor_count"],
+        "metadata": local_metadata["metadata"],
+        "civitai": civitai_data,
+    }
+    json_path.write_text(json.dumps(output, indent=2))
+
+    # Save SHA256 hash
+    sha_path = parent / f"{base_name}-xm.sha256"
+    sha_path.write_text(f"{sha256_hash}  {file_path.name}\n")
+
+    return json_path, sha_path
+
+
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -253,6 +291,11 @@ def main() -> int:
         action="store_true",
         dest="json_output",
         help="Output results as JSON",
+    )
+    parser.add_argument(
+        "--save",
+        action="store_true",
+        help="Save metadata JSON and SHA256 hash alongside the model file",
     )
 
     args = parser.parse_args()
@@ -291,6 +334,15 @@ def main() -> int:
             console.print_json(data=output)
         else:
             display_results(file_path, local_metadata, sha256_hash, civitai_data)
+
+        # Save files if requested
+        if args.save:
+            json_path, sha_path = save_metadata(
+                file_path, sha256_hash, local_metadata, civitai_data
+            )
+            console.print()
+            console.print(f"[green]Saved:[/green] {json_path}")
+            console.print(f"[green]Saved:[/green] {sha_path}")
 
         return 0
 
