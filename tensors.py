@@ -30,6 +30,18 @@ from rich.table import Table
 
 console = Console()
 
+RC_FILE = Path.home() / ".sftrc"
+
+
+def load_api_key() -> str | None:
+    """Load API key from ~/.sftrc if it exists."""
+    if RC_FILE.exists():
+        content = RC_FILE.read_text().strip()
+        if content:
+            return content
+    return None
+
+
 CIVITAI_API_BASE = "https://civitai.com/api/v1"
 CIVITAI_DOWNLOAD_BASE = "https://civitai.com/api/download/models"
 
@@ -512,7 +524,8 @@ def cmd_info(args: argparse.Namespace) -> int:
         # Fetch from CivitAI
         civitai_data = None
         if not args.skip_civitai:
-            civitai_data = fetch_civitai_by_hash(sha256_hash, args.api_key)
+            api_key = args.api_key or load_api_key()
+            civitai_data = fetch_civitai_by_hash(sha256_hash, api_key)
 
         if args.json_output:
             output = {
@@ -597,7 +610,7 @@ def _resolve_version_id(
 
 def cmd_download(args: argparse.Namespace) -> int:
     """Handle the download subcommand."""
-    api_key: str | None = args.api_key
+    api_key: str | None = args.api_key or load_api_key()
     output_dir: Path = args.output.resolve() if args.output else Path.cwd()
 
     if not output_dir.exists():
@@ -656,7 +669,7 @@ def cmd_download(args: argparse.Namespace) -> int:
 def cmd_get(args: argparse.Namespace) -> int:
     """Handle the get subcommand - fetch model info by ID."""
     model_id: int = args.model_id
-    api_key: str | None = args.api_key
+    api_key: str | None = args.api_key or load_api_key()
 
     model_data = fetch_civitai_model(model_id, api_key)
 
