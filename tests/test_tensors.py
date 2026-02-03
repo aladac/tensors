@@ -110,6 +110,29 @@ class TestLoadApiKey:
     def test_returns_none_if_no_key(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Test that None is returned when no key is available."""
         monkeypatch.delenv("CIVITAI_API_KEY", raising=False)
-        # Temporarily point RC_FILE to nonexistent file
-        monkeypatch.setattr(tensors, "RC_FILE", tmp_path / "nonexistent")
+        # Point config and legacy files to nonexistent paths
+        monkeypatch.setattr(tensors, "CONFIG_FILE", tmp_path / "nonexistent" / "config.toml")
+        monkeypatch.setattr(tensors, "LEGACY_RC_FILE", tmp_path / "nonexistent")
         assert load_api_key() is None
+
+    def test_returns_key_from_config_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that key is loaded from TOML config file."""
+        monkeypatch.delenv("CIVITAI_API_KEY", raising=False)
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[api]\ncivitai_key = "key-from-config"\n')
+        monkeypatch.setattr(tensors, "CONFIG_FILE", config_file)
+        monkeypatch.setattr(tensors, "LEGACY_RC_FILE", tmp_path / "nonexistent")
+        assert load_api_key() == "key-from-config"
+
+    def test_returns_key_from_legacy_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Test that key is loaded from legacy RC file when no config exists."""
+        monkeypatch.delenv("CIVITAI_API_KEY", raising=False)
+        legacy_file = tmp_path / ".sftrc"
+        legacy_file.write_text("legacy-key")
+        monkeypatch.setattr(tensors, "CONFIG_FILE", tmp_path / "nonexistent" / "config.toml")
+        monkeypatch.setattr(tensors, "LEGACY_RC_FILE", legacy_file)
+        assert load_api_key() == "legacy-key"

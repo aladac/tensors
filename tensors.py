@@ -12,6 +12,7 @@ import os
 import re
 import struct
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +32,12 @@ from rich.table import Table
 
 console = Console()
 
-RC_FILE = Path.home() / ".sftrc"
+# XDG Base Directory spec: ~/.config/tensors/config.toml
+CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "tensors"
+CONFIG_FILE = CONFIG_DIR / "config.toml"
+
+# Legacy config for migration
+LEGACY_RC_FILE = Path.home() / ".sftrc"
 
 # Default download paths by model type
 DEFAULT_PATHS: dict[str, Path] = {
@@ -41,16 +47,54 @@ DEFAULT_PATHS: dict[str, Path] = {
 }
 
 
+def load_config() -> dict[str, Any]:
+    """Load configuration from TOML config file."""
+    if CONFIG_FILE.exists():
+        with CONFIG_FILE.open("rb") as f:
+            return tomllib.load(f)
+    return {}
+
+
+def save_config(config: dict[str, Any]) -> None:
+    """Save configuration to TOML config file."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+    lines: list[str] = []
+    for key, value in config.items():
+        if isinstance(value, dict):
+            lines.append(f"[{key}]")
+            for k, v in value.items():
+                if isinstance(v, str):
+                    lines.append(f'{k} = "{v}"')
+                else:
+                    lines.append(f"{k} = {v}")
+            lines.append("")
+        elif isinstance(value, str):
+            lines.append(f'{key} = "{value}"')
+        else:
+            lines.append(f"{key} = {value}")
+
+    CONFIG_FILE.write_text("\n".join(lines) + "\n")
+
+
 def load_api_key() -> str | None:
-    """Load API key from ~/.sftrc or CIVITAI_API_KEY env var."""
+    """Load API key from config file or CIVITAI_API_KEY env var."""
     # Check environment variable first
     env_key = os.environ.get("CIVITAI_API_KEY")
     if env_key:
         return env_key
 
-    # Fall back to RC file
-    if RC_FILE.exists():
-        content = RC_FILE.read_text().strip()
+    # Check TOML config file
+    config = load_config()
+    api_section = config.get("api", {})
+    if isinstance(api_section, dict):
+        key = api_section.get("civitai_key")
+        if key:
+            return str(key)
+
+    # Fall back to legacy RC file for migration
+    if LEGACY_RC_FILE.exists():
+        content = LEGACY_RC_FILE.read_text().strip()
         if content:
             return content
     return None

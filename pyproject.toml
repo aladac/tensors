@@ -8,6 +8,7 @@ dependencies = [
     "safetensors>=0.4.0",
     "httpx>=0.27.0",
     "rich>=13.0.0",
+    "typer>=0.15.0",
 ]
 
 [project.scripts]
