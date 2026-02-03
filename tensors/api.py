@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -40,7 +41,7 @@ def fetch_civitai_model_version(version_id: int, api_key: str | None, console: C
 
     try:
         response = httpx.get(url, headers=_get_headers(api_key), timeout=30.0)
-        if response.status_code == 404:
+        if response.status_code == HTTPStatus.NOT_FOUND:
             return None
         response.raise_for_status()
         result: dict[str, Any] = response.json()
@@ -67,7 +68,7 @@ def fetch_civitai_model(model_id: int, api_key: str | None, console: Console) ->
 
         try:
             response = httpx.get(url, headers=_get_headers(api_key), timeout=30.0)
-            if response.status_code == 404:
+            if response.status_code == HTTPStatus.NOT_FOUND:
                 return None
             response.raise_for_status()
             result: dict[str, Any] = response.json()
@@ -94,7 +95,7 @@ def fetch_civitai_by_hash(sha256_hash: str, api_key: str | None, console: Consol
 
         try:
             response = httpx.get(url, headers=_get_headers(api_key), timeout=30.0)
-            if response.status_code == 404:
+            if response.status_code == HTTPStatus.NOT_FOUND:
                 return None
             response.raise_for_status()
             result: dict[str, Any] = response.json()
@@ -269,7 +270,7 @@ def download_model(
             follow_redirects=True,
             timeout=httpx.Timeout(30.0, read=None),
         ) as response:
-            if response.status_code == 416:
+            if response.status_code == HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE:
                 console.print("[green]File already fully downloaded.[/green]")
                 return True
 
@@ -279,7 +280,7 @@ def download_model(
 
     except httpx.HTTPStatusError as e:
         console.print(f"[red]Download error: HTTP {e.response.status_code}[/red]")
-        if e.response.status_code == 401:
+        if e.response.status_code == HTTPStatus.UNAUTHORIZED:
             console.print("[yellow]Hint: This model may require an API key.[/yellow]")
         return False
     except httpx.RequestError as e:

@@ -52,9 +52,7 @@ select = [
     "RUF",    # ruff-specific
 ]
 ignore = [
-    "PLR2004",  # Magic values - acceptable in CLI apps
     "PLR0913",  # Too many arguments - CLI commands need many options
-    "PLR0911",  # Too many return statements
 ]
 
 [tool.ruff.lint.isort]

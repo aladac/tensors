@@ -24,18 +24,21 @@ from rich.progress import (
 if TYPE_CHECKING:
     from rich.console import Console
 
+# Safetensor format constants
+HEADER_SIZE_BYTES = 8  # u64 little-endian
+MAX_HEADER_SIZE = 100_000_000  # 100MB sanity check
+
 
 def read_safetensor_metadata(file_path: Path) -> dict[str, Any]:
     """Read metadata from a safetensor file header."""
     with file_path.open("rb") as f:
-        # First 8 bytes are the header size (little-endian u64)
-        header_size_bytes = f.read(8)
-        if len(header_size_bytes) < 8:
+        header_size_bytes = f.read(HEADER_SIZE_BYTES)
+        if len(header_size_bytes) < HEADER_SIZE_BYTES:
             raise ValueError("Invalid safetensor file: too short")
 
         header_size = struct.unpack("<Q", header_size_bytes)[0]
 
-        if header_size > 100_000_000:  # 100MB sanity check
+        if header_size > MAX_HEADER_SIZE:
             raise ValueError(f"Invalid header size: {header_size}")
 
         header_bytes = f.read(header_size)

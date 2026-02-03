@@ -12,23 +12,30 @@ from rich.table import Table
 if TYPE_CHECKING:
     from rich.console import Console
 
+# Size formatting constants
+KB = 1024
+MB_IN_KB = KB * KB
+THOUSAND = 1000
+MILLION = 1_000_000
+MAX_TAGS_DISPLAY = 10
+
 
 def _format_size(size_kb: float) -> str:
     """Format size in KB to human-readable string."""
-    if size_kb < 1024:
+    if size_kb < KB:
         return f"{size_kb:.0f} KB"
-    if size_kb < 1024 * 1024:
-        return f"{size_kb / 1024:.1f} MB"
-    return f"{size_kb / 1024 / 1024:.2f} GB"
+    if size_kb < MB_IN_KB:
+        return f"{size_kb / KB:.1f} MB"
+    return f"{size_kb / KB / KB:.2f} GB"
 
 
 def _format_count(count: int) -> str:
     """Format large numbers with K/M suffix."""
-    if count < 1000:
+    if count < THOUSAND:
         return str(count)
-    if count < 1_000_000:
-        return f"{count / 1000:.1f}K"
-    return f"{count / 1_000_000:.1f}M"
+    if count < MILLION:
+        return f"{count / THOUSAND:.1f}K"
+    return f"{count / MILLION:.1f}M"
 
 
 def display_file_info(file_path: Path, local_metadata: dict[str, Any], sha256_hash: str, console: Console) -> None:
@@ -174,7 +181,7 @@ def _add_model_basic_info(table: Table, model_data: dict[str, Any]) -> None:
 
     tags: list[str] = model_data.get("tags", [])
     if tags:
-        table.add_row("Tags", ", ".join(tags[:10]) + ("..." if len(tags) > 10 else ""))
+        table.add_row("Tags", ", ".join(tags[:MAX_TAGS_DISPLAY]) + ("..." if len(tags) > MAX_TAGS_DISPLAY else ""))
 
     stats: dict[str, Any] = model_data.get("stats", {})
     if stats:

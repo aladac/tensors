@@ -38,6 +38,9 @@ from tensors.display import (
 )
 from tensors.safetensor import compute_sha256, get_base_name, read_safetensor_metadata
 
+# Key masking threshold
+MIN_KEY_LENGTH_FOR_MASKING = 8
+
 app = typer.Typer(
     name="tsr",
     help="Read safetensor metadata, search and download CivitAI models.",
@@ -211,44 +214,50 @@ def get(
             display_model_info(model_data, console)
 
 
+def _resolve_by_hash(hash_val: str, api_key: str | None) -> int | None:
+    """Resolve version ID from SHA256 hash."""
+    console.print(f"[cyan]Looking up model by hash: {hash_val[:16]}...[/cyan]")
+    civitai_data = fetch_civitai_by_hash(hash_val.upper(), api_key, console)
+    if not civitai_data:
+        console.print("[red]Error: Model not found on CivitAI for this hash.[/red]")
+        return None
+    vid: int | None = civitai_data.get("id")
+    if vid:
+        console.print(f"[green]Found:[/green] {civitai_data.get('name', 'N/A')}")
+    return vid
+
+
+def _resolve_by_model_id(model_id: int, api_key: str | None) -> int | None:
+    """Resolve latest version ID from model ID."""
+    console.print(f"[cyan]Looking up model {model_id}...[/cyan]")
+    model_data = fetch_civitai_model(model_id, api_key, console)
+    if not model_data:
+        console.print(f"[red]Error: Model {model_id} not found.[/red]")
+        return None
+    versions = model_data.get("modelVersions", [])
+    if not versions:
+        console.print("[red]Error: Model has no versions.[/red]")
+        return None
+    latest = versions[0]
+    latest_vid: int | None = latest.get("id")
+    if latest_vid:
+        console.print(f"[green]Found latest:[/green] {latest.get('name', 'N/A')} (ID: {latest_vid})")
+    return latest_vid
+
+
 def _resolve_version_id(
     version_id: int | None,
     hash_val: str | None,
     model_id: int | None,
     api_key: str | None,
 ) -> int | None:
-    """Resolve version ID from hash or model ID."""
+    """Resolve version ID from direct ID, hash, or model ID."""
     if version_id:
         return version_id
-
     if hash_val:
-        console.print(f"[cyan]Looking up model by hash: {hash_val[:16]}...[/cyan]")
-        civitai_data = fetch_civitai_by_hash(hash_val.upper(), api_key, console)
-        if not civitai_data:
-            console.print("[red]Error: Model not found on CivitAI for this hash.[/red]")
-            return None
-        vid: int | None = civitai_data.get("id")
-        if vid:
-            console.print(f"[green]Found:[/green] {civitai_data.get('name', 'N/A')}")
-        return vid
-
+        return _resolve_by_hash(hash_val, api_key)
     if model_id:
-        console.print(f"[cyan]Looking up model {model_id}...[/cyan]")
-        model_data = fetch_civitai_model(model_id, api_key, console)
-        if not model_data:
-            console.print(f"[red]Error: Model {model_id} not found.[/red]")
-            return None
-        versions = model_data.get("modelVersions", [])
-        if not versions:
-            console.print("[red]Error: Model has no versions.[/red]")
-            return None
-        latest = versions[0]
-        latest_vid: int | None = latest.get("id")
-        if latest_vid:
-            name = latest.get("name", "N/A")
-            console.print(f"[green]Found latest:[/green] {name} (ID: {latest_vid})")
-        return latest_vid
-
+        return _resolve_by_model_id(model_id, api_key)
     return None
 
 
@@ -359,7 +368,7 @@ def config(
 
         key = load_api_key()
         if key:
-            masked = key[:4] + "..." + key[-4:] if len(key) > 8 else "***"
+            masked = key[:4] + "..." + key[-4:] if len(key) > MIN_KEY_LENGTH_FOR_MASKING else "***"
             console.print(f"[bold]API key:[/bold] {masked}")
         else:
             console.print("[bold]API key:[/bold] [yellow]Not set[/yellow]")
