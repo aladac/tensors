@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -41,11 +42,28 @@ from tensors.safetensor import compute_sha256, get_base_name, read_safetensor_me
 # Key masking threshold
 MIN_KEY_LENGTH_FOR_MASKING = 8
 
+
+def _version_callback(value: bool) -> None:
+    if value:
+        print(f"tsr {version('tensors')}")
+        raise typer.Exit
+
+
 app = typer.Typer(
     name="tsr",
     help="Read safetensor metadata, search and download CivitAI models.",
     no_args_is_help=True,
 )
+
+
+@app.callback()
+def _main(
+    _version: Annotated[
+        bool,
+        typer.Option("--version", "-V", callback=_version_callback, is_eager=True, help="Show version and exit."),
+    ] = False,
+) -> None:
+    """Read safetensor metadata, search and download CivitAI models."""
 console = Console()
 
 
