@@ -533,13 +533,10 @@ def _display_file_info(file_path: Path, local_metadata: dict[str, Any], sha256_h
     """Display file information table."""
     # Property column: 12 chars, Value fills remaining width
     prop_width = 12
-    terminal_width = console.size.width
-    overhead = 7  # borders and separators for 2 columns
-    value_width = max(40, terminal_width - prop_width - overhead)
 
-    file_table = Table(title="File Information", show_header=True, header_style="bold magenta")
+    file_table = Table(title="File Information", show_header=True, header_style="bold magenta", expand=True)
     file_table.add_column("Property", style="cyan", width=prop_width, no_wrap=True)
-    file_table.add_column("Value", style="green", width=value_width, no_wrap=True, overflow="ellipsis")
+    file_table.add_column("Value", style="green", no_wrap=True, overflow="ellipsis")
 
     file_table.add_row("File", str(file_path.name))
     file_table.add_row("Path", str(file_path.parent))
@@ -552,29 +549,43 @@ def _display_file_info(file_path: Path, local_metadata: dict[str, Any], sha256_h
     console.print(file_table)
 
 
-def _display_local_metadata(local_metadata: dict[str, Any]) -> None:
+def _display_local_metadata(local_metadata: dict[str, Any], keys_filter: list[str] | None = None) -> None:
     """Display local safetensor metadata table."""
-    if local_metadata["metadata"]:
-        # Key column: 20 chars, Value fills remaining width
-        key_width = 20
-        terminal_width = console.size.width
-        overhead = 7  # borders and separators for 2 columns
-        value_width = max(40, terminal_width - key_width - overhead)
-
-        meta_table = Table(
-            title="Safetensor Metadata", show_header=True, header_style="bold magenta"
-        )
-        meta_table.add_column("Key", style="cyan", width=key_width, no_wrap=True)
-        meta_table.add_column("Value", style="green", width=value_width, no_wrap=True, overflow="ellipsis")
-
-        for key, value in sorted(local_metadata["metadata"].items()):
-            meta_table.add_row(key, str(value))
-
-        console.print()
-        console.print(meta_table)
-    else:
+    if not local_metadata["metadata"]:
         console.print()
         console.print("[yellow]No embedded metadata found in safetensor file.[/yellow]")
+        return
+
+    metadata = local_metadata["metadata"]
+
+    # If specific keys requested, show them in full
+    if keys_filter:
+        for key in keys_filter:
+            if key in metadata:
+                console.print(f"[cyan]{key}[/cyan]: {metadata[key]}")
+            else:
+                console.print(f"[yellow]{key}: not found[/yellow]")
+        return
+
+    # Find the longest key to set column width
+    all_keys = list(metadata.keys())
+    key_width = max(len(k) for k in all_keys) if all_keys else 20
+
+    # Value width: terminal minus key column and table borders (7 chars)
+    terminal_width = console.size.width
+    value_width = terminal_width - key_width - 7
+
+    meta_table = Table(
+        title="Safetensor Metadata", show_header=True, header_style="bold magenta",
+    )
+    meta_table.add_column("Key", style="cyan", width=key_width, no_wrap=True)
+    meta_table.add_column("Value", style="green", width=value_width, no_wrap=True, overflow="ellipsis")
+
+    for key, value in sorted(metadata.items()):
+        meta_table.add_row(key, str(value))
+
+    console.print()
+    console.print(meta_table)
 
 
 def _display_civitai_data(civitai_data: dict[str, Any] | None) -> None:
@@ -732,13 +743,13 @@ def _display_search_results(results: dict[str, Any]) -> None:
 
     # Static column widths based on expected max values
     # ID: 7 chars (max ~9,999,999)
-    # Type: 10 chars (e.g., "Checkpoint", "ControlNet")
+    # Type: 16 chars (longest: "TextualInversion")
     # Base: 20 chars (e.g., "Flux.2 Klein 9B-base")
     # Size: 8 chars (e.g., "11.08 GB")
     # DLs: 6 chars (e.g., "999.9K")
     # Likes: 6 chars (e.g., "999.9K")
     id_width = 7
-    type_width = 10
+    type_width = 16
     base_width = 20
     size_width = 8
     dls_width = 6
@@ -802,6 +813,9 @@ def _display_search_results(results: dict[str, Any]) -> None:
 @app.command()
 def info(
     file: Annotated[Path, typer.Argument(help="Path to the safetensor file")],
+    meta: Annotated[
+        list[str] | None, typer.Option("--meta", "-m", help="Show specific metadata key(s) in full")
+    ] = None,
     api_key: Annotated[str | None, typer.Option("--api-key", help="CivitAI API key")] = None,
     skip_civitai: Annotated[
         bool, typer.Option("--skip-civitai", help="Skip CivitAI API lookup")
@@ -822,8 +836,14 @@ def info(
         console.print("[yellow]Warning: File does not have .safetensors extension[/yellow]")
 
     try:
-        console.print(f"[bold]Reading safetensor file:[/bold] {file_path.name}")
         local_metadata = read_safetensor_metadata(file_path)
+
+        # If just fetching specific metadata keys, skip everything else
+        if meta:
+            _display_local_metadata(local_metadata, keys_filter=meta)
+            return
+
+        console.print(f"[bold]Reading safetensor file:[/bold] {file_path.name}")
         sha256_hash = compute_sha256(file_path)
 
         civitai_data = None
