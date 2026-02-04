@@ -1,3 +1,5 @@
+![Static Badge](https://img.shields.io/badge/pip_install-tensors-blue?link=https%3A%2F%2Fpypi.org%2Fproject%2Ftensors)
+
 # tensors
 
 A CLI tool for working with safetensor files and CivitAI models.
