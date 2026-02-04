@@ -4,6 +4,8 @@ A CLI tool for working with safetensor files and CivitAI models.
 
 ## Features
 
+https://github.com/user-attachments/assets/2e7629b4-34e7-4cbc-b50e-31d7fdd30239
+
 - **Read safetensor metadata** - Parse headers, count tensors, extract embedded metadata
 - **CivitAI integration** - Search models, fetch info, identify files by hash
 - **Download models** - Resume support, type-based default paths
