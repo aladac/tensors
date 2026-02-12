@@ -29,7 +29,7 @@ class ProcessManager:
     def build_cmd(self) -> list[str]:
         if self.config is None:
             raise RuntimeError("No config set")
-        cmd = [SD_SERVER_BIN, "-m", self.config.model, "--port", str(self.config.port)]
+        cmd = [SD_SERVER_BIN, "-m", self.config.model, "--listen-port", str(self.config.port)]
         cmd.extend(self.config.args)
         return cmd
 
@@ -65,6 +65,8 @@ class ProcessManager:
             "running": True,
             "pid": self.proc.pid,
             "model": self.config.model if self.config else None,
+            "port": self.config.port if self.config else None,
+            "bind": f"http://127.0.0.1:{self.config.port}" if self.config else None,
             "cmd": self.build_cmd(),
         }
 
@@ -82,7 +84,7 @@ class ProcessManager:
                     r = await client.get(url, timeout=2)
                     if r.status_code == _HTTP_OK:
                         return True
-                except httpx.ConnectError:
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.ReadError):
                     pass
                 await asyncio.sleep(1)
         return False
