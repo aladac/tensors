@@ -64,6 +64,8 @@ def _main(
     ] = False,
 ) -> None:
     """Read safetensor metadata, search and download CivitAI models."""
+
+
 console = Console()
 
 
@@ -395,12 +397,71 @@ def config(
         console.print("[dim]Set API key with: tsr config --set-key YOUR_KEY[/dim]")
 
 
+@app.command()
+def generate(
+    prompt: Annotated[str, typer.Argument(help="Text prompt for image generation.")],
+    host: Annotated[str, typer.Option(help="sd-server address.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="sd-server port.")] = 1234,
+    output: Annotated[str, typer.Option("-o", help="Output directory.")] = ".",
+    negative_prompt: Annotated[str, typer.Option("-n", help="Negative prompt.")] = "",
+    width: Annotated[int, typer.Option("-W", help="Image width.")] = 512,
+    height: Annotated[int, typer.Option("-H", help="Image height.")] = 512,
+    steps: Annotated[int, typer.Option(help="Sampling steps.")] = 20,
+    cfg_scale: Annotated[float, typer.Option(help="CFG scale.")] = 7.0,
+    seed: Annotated[int, typer.Option("-s", help="RNG seed (-1 for random).")] = -1,
+    sampler: Annotated[str, typer.Option(help="Sampler name.")] = "",
+    scheduler: Annotated[str, typer.Option(help="Scheduler name.")] = "",
+    batch_size: Annotated[int, typer.Option("-b", help="Number of images.")] = 1,
+) -> None:
+    """Generate images using a running sd-server."""
+    from tensors.generate import SDClient, Txt2ImgParams, save_images  # noqa: PLC0415
+
+    params = Txt2ImgParams(
+        prompt=prompt,
+        negative_prompt=negative_prompt,
+        width=width,
+        height=height,
+        steps=steps,
+        cfg_scale=cfg_scale,
+        seed=seed,
+        batch_size=batch_size,
+        sampler_name=sampler,
+        scheduler=scheduler,
+    )
+
+    with SDClient(host=host, port=port) as client:
+        console.print(f"[cyan]Generating {batch_size} image(s)...[/cyan]")
+        images = client.generate.txt2img(params)
+        paths = save_images(images, output)
+        for p in paths:
+            console.print(f"[green]Saved:[/green] {p}")
+
+
+@app.command()
+def serve(
+    host: Annotated[str, typer.Option(help="Wrapper API listen address.")] = "127.0.0.1",
+    port: Annotated[int, typer.Option(help="Wrapper API listen port.")] = 8080,
+    log_level: Annotated[str, typer.Option(help="Log level.")] = "info",
+) -> None:
+    """Start the sd-server wrapper API."""
+    try:
+        import uvicorn  # noqa: PLC0415
+
+        from tensors.server import create_app  # noqa: PLC0415
+    except ImportError:
+        console.print("[red]Missing server dependencies. Install with:[/red]")
+        console.print("  pip install tensors[server]")
+        raise typer.Exit(1) from None
+
+    uvicorn.run(create_app(), host=host, port=port, log_level=log_level)
+
+
 def main() -> int:
     """Main entry point."""
     # Handle legacy invocation: tsr <file.safetensors> -> tsr info <file>
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         arg = sys.argv[1]
-        if arg not in ("info", "search", "get", "dl", "download", "config") and (
+        if arg not in ("info", "search", "get", "dl", "download", "config", "generate", "serve") and (
             arg.endswith(".safetensors") or arg.endswith(".sft") or Path(arg).exists()
         ):
             sys.argv = [sys.argv[0], "info", *sys.argv[1:]]
