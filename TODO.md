@@ -1,8 +1,25 @@
 # TODO
 
-## Web UI
+## SD Image Generation
 
-Add a web interface started from the CLI (`tsr serve` or `tsr ui`) to:
+### Phase 1: Generation Engine
+- [ ] Step 1.1: Create `tensors/generate.py` — ImageGenerator class (diffusers pipeline, checkpoint loading, LoRA, schedulers)
+- [ ] Step 1.2: Add `[generate]` config section (models_dir, lora_dir, output_dir, defaults)
+
+### Phase 2: CLI Generate Command
+- [ ] Step 2.1: `tsr gen` command (prompt, model, negative, steps, cfg, sampler, scheduler, seed, lora, resolution)
+- [ ] Step 2.2: `tsr gen-ls` command (list models, LoRAs, schedulers)
+
+### Phase 3: Web Gallery
+- [ ] Step 3.1: `tensors/gallery.py` — FastAPI server (generate, images, models, loras, schedulers endpoints)
+- [ ] Step 3.2: `tensors/static/index.html` — mobile-first dark gallery UI (generate panel + image grid)
+- [ ] Step 3.3: `tsr gallery` CLI command (launch server)
+
+### Phase 4: Tests
+- [ ] Step 4.1: `tests/test_generate.py` (mocked diffusers, scheduler mapping, config)
+- [ ] Step 4.2: `tests/test_gallery.py` (FastAPI TestClient, mocked generator)
+
+## Web UI (Future)
 
 ### Model Library
 - [ ] Browse downloaded models in `~/.local/share/tensors/models/`
@@ -19,9 +36,3 @@ Add a web interface started from the CLI (`tsr serve` or `tsr ui`) to:
 - [ ] View model details and versions
 - [ ] One-click download to appropriate directory
 - [ ] Show download progress
-
-### Technical
-- [ ] Use FastAPI + htmx or similar lightweight stack
-- [ ] SQLite for local model index/cache
-- [ ] Watch filesystem for new models
-- [ ] Configurable port (`tsr serve --port 8080`)
