@@ -10,7 +10,11 @@ import httpx
 from fastapi import FastAPI
 
 from tensors.server.db_routes import create_db_router
+from tensors.server.download_routes import create_download_router
+from tensors.server.gallery_routes import create_gallery_router
+from tensors.server.generate_routes import create_generate_router
 from tensors.server.models import ServerConfig
+from tensors.server.models_routes import create_models_router
 from tensors.server.process import ProcessManager
 from tensors.server.routes import create_router
 
@@ -42,7 +46,11 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         pm.stop()
 
     app = FastAPI(title="sd-server wrapper", lifespan=lifespan)
-    app.include_router(create_db_router())  # Must be first to avoid catch-all conflict
+    app.include_router(create_db_router())  # Must be before catch-all proxy
+    app.include_router(create_gallery_router())  # Must be before catch-all proxy
+    app.include_router(create_models_router(pm))  # Must be before catch-all proxy
+    app.include_router(create_download_router())  # Must be before catch-all proxy
+    app.include_router(create_generate_router(pm))  # Must be before catch-all proxy
     app.include_router(create_router(pm))
     app.state.pm = pm
     return app

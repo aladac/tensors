@@ -11,10 +11,10 @@
 - [x] Step 2.3: Add `/api/db/*` endpoints (files, models, triggers, scan, link, cache, stats)
 
 ## Phase 3: Enhanced Server API
-- [ ] Step 3.1: Add `/api/images` gallery endpoints (list, get, delete, edit)
-- [ ] Step 3.2: Add `/api/models` endpoints (list, active, switch, loras)
-- [ ] Step 3.3: Add `/api/download` endpoint (CivitAI proxy download)
-- [ ] Step 3.4: Enhance `/api/generate` (gallery integration, full params)
+- [x] Step 3.1: Add `/api/images` gallery endpoints (list, get, delete, edit)
+- [x] Step 3.2: Add `/api/models` endpoints (list, active, switch, loras)
+- [x] Step 3.3: Add `/api/download` endpoint (CivitAI proxy download)
+- [x] Step 3.4: Enhance `/api/generate` (gallery integration, full params)
 
 ## Phase 4: Client Mode for tsr CLI
 - [ ] Step 4.1: Create `tensors/client.py` (TsrClient HTTP wrapper)

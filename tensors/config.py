@@ -20,6 +20,7 @@ CONFIG_FILE = CONFIG_DIR / "config.toml"
 DATA_DIR = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")) / "tensors"
 MODELS_DIR = DATA_DIR / "models"
 METADATA_DIR = DATA_DIR / "metadata"
+GALLERY_DIR = DATA_DIR / "gallery"
 
 # Legacy config for migration
 LEGACY_RC_FILE = Path.home() / ".sftrc"
