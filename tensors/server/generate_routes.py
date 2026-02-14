@@ -129,7 +129,7 @@ def _process_image(
 # =============================================================================
 
 
-def create_generate_router() -> APIRouter:
+def create_generate_router() -> APIRouter:  # noqa: PLR0915
     """Build a router with /api/generate endpoint."""
     router = APIRouter(prefix="/api", tags=["generate"])
     gallery = Gallery()

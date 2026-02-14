@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from tensors.config import MODELS_DIR
+from tensors.db import Database
 from tensors.server.sd_client import get_sd_headers
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,56 @@ def scan_models(directory: Path, extensions: tuple[str, ...] = (".safetensors", 
     return models
 
 
+def _enrich_with_metadata(models: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Enrich model data with CivitAI metadata from database."""
+    try:
+        with Database() as db:
+            db.init_schema()
+
+            for model in models:
+                file_path = model.get("path", "")
+                file_info = db.get_local_file_by_path(file_path)
+
+                if file_info and file_info.get("civitai_model_id"):
+                    # Add human-readable name
+                    model["display_name"] = file_info.get("model_name") or model["name"]
+                    model["base_model"] = file_info.get("base_model")
+                    model["model_type"] = file_info.get("model_type")
+                    model["civitai_model_id"] = file_info.get("civitai_model_id")
+                    model["civitai_version_id"] = file_info.get("civitai_version_id")
+
+                    # Get thumbnail from version images
+                    version_id = file_info.get("civitai_version_id")
+                    if version_id:
+                        cur = db.conn.cursor()
+                        cur.execute(
+                            """
+                            SELECT url FROM version_images
+                            WHERE version_id = (SELECT id FROM model_versions WHERE civitai_id = ?)
+                            ORDER BY id LIMIT 1
+                            """,
+                            (version_id,),
+                        )
+                        row = cur.fetchone()
+                        if row:
+                            model["thumbnail_url"] = row[0]
+
+                    # Get trigger words
+                    triggers = db.get_triggers_by_version(version_id) if version_id else []
+                    model["triggers"] = triggers[:5]  # Limit to first 5
+                else:
+                    model["display_name"] = model["name"]
+
+    except Exception as e:
+        logger.warning("Failed to enrich models with metadata: %s", e)
+        # Fallback: just use filename as display name
+        for model in models:
+            if "display_name" not in model:
+                model["display_name"] = model["name"]
+
+    return models
+
+
 def scan_loras(directory: Path | None = None) -> list[dict[str, Any]]:
     """Scan for LoRA files."""
     lora_dir = directory or MODELS_DIR / "loras"
@@ -127,14 +178,15 @@ def scan_checkpoints(directory: Path | None = None) -> list[dict[str, Any]]:
 # =============================================================================
 
 
-def create_models_router() -> APIRouter:
+def create_models_router() -> APIRouter:  # noqa: PLR0915
     """Build a router with /api/models/* endpoints."""
     router = APIRouter(prefix="/api/models", tags=["models"])
 
     @router.get("")
     def list_models() -> dict[str, Any]:
-        """List available checkpoint models."""
+        """List available checkpoint models with metadata."""
         checkpoints = scan_checkpoints()
+        checkpoints = _enrich_with_metadata(checkpoints)
         return {
             "models": checkpoints,
             "total": len(checkpoints),
@@ -172,8 +224,9 @@ def create_models_router() -> APIRouter:
 
     @router.get("/loras")
     def list_loras() -> dict[str, Any]:
-        """List available LoRA files."""
+        """List available LoRA files with metadata."""
         loras = scan_loras()
+        loras = _enrich_with_metadata(loras)
         return {
             "loras": loras,
             "total": len(loras),
@@ -220,14 +273,14 @@ def create_models_router() -> APIRouter:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        _, stderr = await proc.communicate(new_content.encode())
+        _, tee_stderr = await proc.communicate(new_content.encode())
         if proc.returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to write env file: {stderr.decode()}")
+            raise HTTPException(status_code=500, detail=f"Failed to write env file: {tee_stderr.decode()}")
 
         # Restart sd-server
-        returncode, _stdout, stderr = await _run_command("sudo", "systemctl", "restart", "sd-server")
+        returncode, _stdout, restart_stderr = await _run_command("sudo", "systemctl", "restart", "sd-server")
         if returncode != 0:
-            raise HTTPException(status_code=500, detail=f"Failed to restart sd-server: {stderr}")
+            raise HTTPException(status_code=500, detail=f"Failed to restart sd-server: {restart_stderr}")
 
         logger.info(f"Switched model from {old_model} to {model_path}")
 

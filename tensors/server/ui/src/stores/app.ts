@@ -82,7 +82,13 @@ export const useAppStore = defineStore('app', () => {
       loras.value = lorasRes.loras
       activeModel.value = activeRes.model
       if (activeRes.model) {
-        selectedModel.value = activeRes.model
+        // Find full path for the active model (API returns model name without extension, v-select uses path)
+        const activeModelPath = modelsRes.models.find(m =>
+          m.name === activeRes.model ||
+          m.filename === activeRes.model ||
+          m.filename.startsWith(activeRes.model + '.')
+        )?.path
+        selectedModel.value = activeModelPath || activeRes.model
       }
     } catch (error) {
       console.error('Failed to load models:', error)

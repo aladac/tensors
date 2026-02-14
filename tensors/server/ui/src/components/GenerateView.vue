@@ -30,12 +30,22 @@ interface ChatMessage {
 const messages = ref<ChatMessage[]>([])
 
 const modelItems = computed(() =>
-  store.models.map(m => ({ title: m.name, value: m.path }))
+  store.models.map(m => ({
+    title: m.display_name || m.name,
+    value: m.path,
+    thumbnail: m.thumbnail_url,
+    base_model: m.base_model,
+  }))
 )
 
 const loraItems = computed(() => [
-  { title: 'None', value: '' },
-  ...store.filteredLoras.map(l => ({ title: l.name, value: l.path }))
+  { title: 'None', value: '', thumbnail: null, triggers: [] },
+  ...store.filteredLoras.map(l => ({
+    title: l.display_name || l.name,
+    value: l.path,
+    thumbnail: l.thumbnail_url,
+    triggers: l.triggers || [],
+  }))
 ])
 
 
@@ -187,9 +197,33 @@ async function generate() {
             :disabled="store.switchingModel || generating"
             density="compact"
             hide-details
-            style="width: 200px"
+            style="width: 280px"
             @update:model-value="handleModelChange"
-          />
+          >
+            <template #selection="{ item }">
+              <div class="d-flex align-center ga-2">
+                <v-avatar v-if="item.raw.thumbnail" size="24" rounded="sm">
+                  <v-img :src="item.raw.thumbnail" cover />
+                </v-avatar>
+                <v-icon v-else size="24" color="grey">mdi-cube-outline</v-icon>
+                <span class="text-truncate">{{ item.title }}</span>
+              </div>
+            </template>
+            <template #item="{ item, props }">
+              <v-list-item v-bind="props" :title="undefined">
+                <template #prepend>
+                  <v-avatar v-if="item.raw.thumbnail" size="32" rounded="sm" class="mr-3">
+                    <v-img :src="item.raw.thumbnail" cover />
+                  </v-avatar>
+                  <v-icon v-else size="32" color="grey" class="mr-3">mdi-cube-outline</v-icon>
+                </template>
+                <v-list-item-title>{{ item.title }}</v-list-item-title>
+                <v-list-item-subtitle v-if="item.raw.base_model" class="text-caption">
+                  {{ item.raw.base_model }}
+                </v-list-item-subtitle>
+              </v-list-item>
+            </template>
+          </v-select>
         </div>
 
         <div class="d-flex align-center ga-2">
@@ -200,8 +234,32 @@ async function generate() {
             :disabled="generating"
             density="compact"
             hide-details
-            style="width: 150px"
-          />
+            style="width: 200px"
+          >
+            <template #selection="{ item }">
+              <div class="d-flex align-center ga-2">
+                <v-avatar v-if="item.raw.thumbnail" size="24" rounded="sm">
+                  <v-img :src="item.raw.thumbnail" cover />
+                </v-avatar>
+                <v-icon v-else size="24" color="grey">mdi-shimmer</v-icon>
+                <span class="text-truncate">{{ item.title }}</span>
+              </div>
+            </template>
+            <template #item="{ item, props }">
+              <v-list-item v-bind="props" :title="undefined">
+                <template #prepend>
+                  <v-avatar v-if="item.raw.thumbnail" size="32" rounded="sm" class="mr-3">
+                    <v-img :src="item.raw.thumbnail" cover />
+                  </v-avatar>
+                  <v-icon v-else size="32" color="grey" class="mr-3">mdi-shimmer</v-icon>
+                </template>
+                <v-list-item-title>{{ item.title }}</v-list-item-title>
+                <v-list-item-subtitle v-if="item.raw.triggers?.length" class="text-caption text-truncate">
+                  {{ item.raw.triggers.slice(0, 2).join(', ') }}
+                </v-list-item-subtitle>
+              </v-list-item>
+            </template>
+          </v-select>
           <v-text-field
             v-model.number="store.loraWeight"
             type="number"

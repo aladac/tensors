@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
-from fastapi import Request
+
+if TYPE_CHECKING:
+    from fastapi import Request
 
 
 def get_sd_headers(request: Request) -> dict[str, str]:

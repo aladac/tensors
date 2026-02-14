@@ -5,6 +5,14 @@ export interface Model {
   size_mb: number
   modified: number
   category: 'sd15' | 'large'
+  // Enriched from CivitAI metadata
+  display_name?: string
+  base_model?: string
+  model_type?: string
+  civitai_model_id?: number
+  civitai_version_id?: number
+  thumbnail_url?: string
+  triggers?: string[]
 }
 
 export interface LoRA {
@@ -14,6 +22,14 @@ export interface LoRA {
   size_mb: number
   modified: number
   category: 'sd15' | 'large'
+  // Enriched from CivitAI metadata
+  display_name?: string
+  base_model?: string
+  model_type?: string
+  civitai_model_id?: number
+  civitai_version_id?: number
+  thumbnail_url?: string
+  triggers?: string[]
 }
 
 export interface GeneratedImage {

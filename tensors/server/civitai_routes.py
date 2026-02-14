@@ -10,6 +10,7 @@ from fastapi import APIRouter, Query, Response
 from fastapi.responses import JSONResponse
 
 from tensors.config import CIVITAI_API_BASE, load_api_key
+from tensors.db import Database
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,18 @@ async def search_models(
             response = await client.get(url, params=params, headers=_get_headers(api_key))
             response.raise_for_status()
             result: dict[str, Any] = response.json()
+
+            # Cache all models from search results
+            items = result.get("items", [])
+            if items:
+                try:
+                    with Database() as db:
+                        db.init_schema()
+                        for model_data in items:
+                            db.cache_model(model_data)
+                except Exception as e:
+                    logger.warning("Failed to cache search results: %s", e)
+
             return result
     except httpx.HTTPStatusError as e:
         logger.error("CivitAI API error: %s", e.response.status_code)
@@ -67,7 +80,7 @@ async def search_models(
 
 @router.get("/model/{model_id}", response_model=None)
 async def get_model(model_id: int) -> dict[str, Any] | Response:
-    """Get model details from CivitAI."""
+    """Get model details from CivitAI and cache to database."""
     api_key = load_api_key()
     url = f"{CIVITAI_API_BASE}/models/{model_id}"
 
@@ -76,6 +89,15 @@ async def get_model(model_id: int) -> dict[str, Any] | Response:
             response = await client.get(url, headers=_get_headers(api_key))
             response.raise_for_status()
             result: dict[str, Any] = response.json()
+
+            # Cache the model data to database
+            try:
+                with Database() as db:
+                    db.init_schema()
+                    db.cache_model(result)
+            except Exception as e:
+                logger.warning("Failed to cache model %d: %s", model_id, e)
+
             return result
     except httpx.HTTPStatusError:
         return JSONResponse({"error": "Model not found"}, status_code=404)
