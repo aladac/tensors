@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
@@ -46,6 +48,14 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
         pm.stop()
 
     app = FastAPI(title="sd-server wrapper", lifespan=lifespan)
+
+    # Serve gallery UI at root
+    static_dir = Path(__file__).parent / "static"
+
+    @app.get("/", include_in_schema=False)
+    async def gallery_ui() -> FileResponse:
+        return FileResponse(static_dir / "index.html")
+
     app.include_router(create_db_router())  # Must be before catch-all proxy
     app.include_router(create_gallery_router())  # Must be before catch-all proxy
     app.include_router(create_models_router(pm))  # Must be before catch-all proxy

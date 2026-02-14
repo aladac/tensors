@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>tsr Gallery</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #fff;
+      min-height: 100vh;
+    }
+    header {
+      padding: 1rem;
+      background: #222;
+      text-align: center;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 300; }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 8px;
+      padding: 8px;
+    }
+    @media (min-width: 768px) {
+      .gallery { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; padding: 12px; }
+    }
+    .gallery a {
+      aspect-ratio: 1;
+      overflow: hidden;
+      border-radius: 4px;
+      background: #333;
+    }
+    .gallery img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.2s;
+    }
+    .gallery a:hover img { transform: scale(1.05); }
+    .empty {
+      text-align: center;
+      padding: 4rem 1rem;
+      color: #666;
+    }
+    .loading {
+      text-align: center;
+      padding: 4rem 1rem;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>tsr Gallery</h1>
+  </header>
+  <main>
+    <div id="gallery" class="gallery">
+      <div class="loading">Loading...</div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
+  <script>
+    async function loadGallery() {
+      const container = document.getElementById('gallery');
+      try {
+        const res = await fetch('/api/images?limit=100');
+        const data = await res.json();
+
+        if (!data.images || data.images.length === 0) {
+          container.innerHTML = '<div class="empty">No images yet</div>';
+          return;
+        }
+
+        container.innerHTML = data.images.map(img => `
+          <a href="/api/images/${img.id}" class="glightbox" data-gallery="gallery" data-description="${img.prompt || ''}">
+            <img src="/api/images/${img.id}" alt="${img.id}" loading="lazy">
+          </a>
+        `).join('');
+
+        GLightbox({ selector: '.glightbox' });
+      } catch (e) {
+        container.innerHTML = '<div class="empty">Failed to load gallery</div>';
+      }
+    }
+    loadGallery();
+  </script>
+</body>
+</html>
