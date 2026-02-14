@@ -76,13 +76,18 @@ async function generate() {
         seed: -1,
         save_to_gallery: true,
       })
+      console.log('Generate result:', result)
+      console.log('Images:', result.images)
       message.images.push(...result.images)
+      console.log('Message images after push:', message.images)
     }
   } catch (e: any) {
+    console.error('Generate error:', e)
     message.error = e.message || 'Generation failed'
   } finally {
     message.loading = false
     generating.value = false
+    console.log('Final message state:', { loading: message.loading, images: message.images.length })
   }
 }
 </script>
