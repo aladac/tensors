@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { Model, LoRA, AspectRatio, BaseSize } from '@/types'
+import type { Model, LoRA, ResolutionPreset } from '@/types'
 import * as api from '@/api/client'
 
 export const useAppStore = defineStore('app', () => {
@@ -16,22 +16,37 @@ export const useAppStore = defineStore('app', () => {
   const loraWeight = ref(0.8)
 
   // Generation settings
-  const baseSize = ref<BaseSize>(768)
-  const aspectRatio = ref<AspectRatio>('1:1')
+  const selectedPreset = ref('768-3:4')
   const steps = ref(20)
   const batchSize = ref(1)
 
-  // Resolution computation
-  const resolutions: Record<BaseSize, Record<AspectRatio, [number, number]>> = {
-    512: { '1:1': [512, 512], '4:3': [512, 384], '3:4': [384, 512] },
-    768: { '1:1': [768, 768], '4:3': [768, 576], '3:4': [576, 768] },
-    1024: { '1:1': [1024, 1024], '4:3': [1024, 768], '3:4': [768, 1024] },
-  }
+  // All resolution presets (base size × aspect ratio)
+  const resolutionPresets: ResolutionPreset[] = [
+    // 512 base
+    { id: '512-3:4', ratio: '3:4', width: 384, height: 512, label: '384×512' },
+    { id: '512-1:1', ratio: '1:1', width: 512, height: 512, label: '512×512' },
+    { id: '512-4:3', ratio: '4:3', width: 512, height: 384, label: '512×384' },
+    // 768 base
+    { id: '768-3:4', ratio: '3:4', width: 576, height: 768, label: '576×768' },
+    { id: '768-1:1', ratio: '1:1', width: 768, height: 768, label: '768×768' },
+    { id: '768-4:3', ratio: '4:3', width: 768, height: 576, label: '768×576' },
+    // 1024 base
+    { id: '1024-3:4', ratio: '3:4', width: 768, height: 1024, label: '768×1024' },
+    { id: '1024-1:1', ratio: '1:1', width: 1024, height: 1024, label: '1024×1024' },
+    { id: '1024-4:3', ratio: '4:3', width: 1024, height: 768, label: '1024×768' },
+  ]
 
   const resolution = computed(() => {
-    const [width, height] = resolutions[baseSize.value][aspectRatio.value]
-    return { width, height }
+    const preset = resolutionPresets.find(p => p.id === selectedPreset.value)
+    return preset ? { width: preset.width, height: preset.height } : { width: 768, height: 1024 }
   })
+
+  // Presets grouped by base size for 3-row display
+  const presetGroups = [
+    { label: 'low', presets: resolutionPresets.filter(p => p.id.startsWith('512-')) },
+    { label: 'mid', presets: resolutionPresets.filter(p => p.id.startsWith('768-')) },
+    { label: 'high', presets: resolutionPresets.filter(p => p.id.startsWith('1024-')) },
+  ]
 
   // Loading states
   const loadingModels = ref(false)
@@ -88,8 +103,9 @@ export const useAppStore = defineStore('app', () => {
     loraWeight,
 
     // Generation settings
-    baseSize,
-    aspectRatio,
+    selectedPreset,
+    resolutionPresets,
+    presetGroups,
     steps,
     batchSize,
     resolution,

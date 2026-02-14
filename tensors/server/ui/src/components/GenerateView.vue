@@ -28,17 +28,6 @@ const loraItems = computed(() => [
   ...store.loras.map(l => ({ title: l.name, value: l.path }))
 ])
 
-const baseSizes = [
-  { title: '512', value: 512 },
-  { title: '768', value: 768 },
-  { title: '1024', value: 1024 },
-] as const
-
-const aspectRatios = [
-  { title: '3:4', value: '3:4' as const },
-  { title: '1:1', value: '1:1' as const },
-  { title: '4:3', value: '4:3' as const },
-]
 
 async function handleModelChange(model: string) {
   if (model && model !== store.activeModel) {
@@ -187,22 +176,25 @@ async function generate() {
           />
         </div>
 
-        <div class="d-flex align-center ga-2">
-          <span class="text-caption text-grey text-uppercase">Size</span>
-          <v-btn-toggle v-model="store.baseSize" mandatory density="compact" :disabled="generating">
-            <v-btn v-for="s in baseSizes" :key="s.value" :value="s.value" size="small">
-              {{ s.title }}
-            </v-btn>
-          </v-btn-toggle>
-        </div>
-
-        <div class="d-flex align-center ga-2">
-          <span class="text-caption text-grey text-uppercase">Ratio</span>
-          <v-btn-toggle v-model="store.aspectRatio" mandatory density="compact" :disabled="generating">
-            <v-btn v-for="r in aspectRatios" :key="r.value" :value="r.value" size="small">
-              {{ r.title }}
-            </v-btn>
-          </v-btn-toggle>
+        <div class="resolution-grid rounded border pa-2">
+          <div
+            v-for="group in store.presetGroups"
+            :key="group.label"
+            class="d-flex align-center ga-2"
+          >
+            <span class="text-caption text-grey text-uppercase resolution-label">{{ group.label }}</span>
+            <v-btn-toggle
+              v-model="store.selectedPreset"
+              mandatory
+              density="compact"
+              :disabled="generating"
+              class="resolution-row"
+            >
+              <v-btn v-for="p in group.presets" :key="p.id" :value="p.id" size="small" class="resolution-btn">
+                {{ p.label }}
+              </v-btn>
+            </v-btn-toggle>
+          </div>
         </div>
 
         <div class="d-flex align-center ga-2">
@@ -261,5 +253,30 @@ async function generate() {
 <style scoped>
 .border-t {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.resolution-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+.resolution-label {
+  width: 36px;
+  text-align: left;
+}
+
+.resolution-row {
+  display: grid !important;
+  grid-template-columns: repeat(3, 100px);
+  width: 300px;
+}
+
+.resolution-btn {
+  width: 100px !important;
+  min-width: 100px !important;
+  max-width: 100px !important;
+  justify-content: center;
 }
 </style>

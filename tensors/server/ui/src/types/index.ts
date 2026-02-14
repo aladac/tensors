@@ -77,5 +77,10 @@ export interface Resolution {
   label: string
 }
 
-export type AspectRatio = '3:4' | '1:1' | '4:3'
-export type BaseSize = 512 | 768 | 1024
+export interface ResolutionPreset {
+  id: string
+  ratio: string
+  width: number
+  height: number
+  label: string
+}
