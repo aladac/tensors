@@ -120,6 +120,18 @@ def save_config(config: dict[str, Any]) -> None:
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
     lines: list[str] = []
+    # Write scalar values first (before any sections)
+    for key, value in config.items():
+        if not isinstance(value, dict):
+            if isinstance(value, str):
+                lines.append(f'{key} = "{value}"')
+            else:
+                lines.append(f"{key} = {value}")
+
+    if lines:
+        lines.append("")
+
+    # Then write sections (dicts)
     for key, value in config.items():
         if isinstance(value, dict):
             lines.append(f"[{key}]")
@@ -129,10 +141,6 @@ def save_config(config: dict[str, Any]) -> None:
                 else:
                     lines.append(f"{k} = {v}")
             lines.append("")
-        elif isinstance(value, str):
-            lines.append(f'{key} = "{value}"')
-        else:
-            lines.append(f"{key} = {value}")
 
     CONFIG_FILE.write_text("\n".join(lines) + "\n")
 
