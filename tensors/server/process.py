@@ -71,10 +71,10 @@ class ProcessManager:
         }
 
     async def wait_ready(self, timeout: float = 120) -> bool:
-        """Poll sd-server /health until it responds or timeout."""
+        """Poll sd-server root endpoint until it responds or timeout."""
         if self.config is None:
             return False
-        url = f"http://127.0.0.1:{self.config.port}/health"
+        url = f"http://127.0.0.1:{self.config.port}/"
         deadline = asyncio.get_event_loop().time() + timeout
         async with httpx.AsyncClient() as client:
             while asyncio.get_event_loop().time() < deadline:
