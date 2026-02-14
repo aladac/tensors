@@ -1,4 +1,4 @@
-"""sd-server wrapper — FastAPI app for managing and proxying to sd-server."""
+"""sd-server wrapper — FastAPI app for proxying to an external sd-server."""
 
 from __future__ import annotations
 
@@ -12,42 +12,39 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from tensors.config import get_sd_server_url
 from tensors.server.civitai_routes import create_civitai_router
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
 from tensors.server.gallery_routes import create_gallery_router
 from tensors.server.generate_routes import create_generate_router
-from tensors.server.models import ServerConfig
 from tensors.server.models_routes import create_models_router
-from tensors.server.process import ProcessManager
 from tensors.server.routes import create_router
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
-__all__ = ["ProcessManager", "ServerConfig", "app", "create_app"]
+__all__ = ["app", "create_app"]
 
 logger = logging.getLogger(__name__)
 
 
-def create_app(config: ServerConfig | None = None) -> FastAPI:
-    """Build the FastAPI application with process manager and proxy client."""
-    pm = ProcessManager()
+def create_app(sd_server_url: str | None = None) -> FastAPI:
+    """Build the FastAPI application that proxies to an external sd-server.
+
+    Args:
+        sd_server_url: URL of the sd-server to proxy to. If None, uses
+                       get_sd_server_url() to resolve from env/config.
+    """
+    backend_url = sd_server_url or get_sd_server_url()
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+        _app.state.sd_server_url = backend_url
+        logger.info(f"Proxying to sd-server at: {backend_url}")
         async with httpx.AsyncClient(timeout=300) as client:
             _app.state.client = client
-            if config is not None:
-                pm.start(config)
-                logger.info("waiting for sd-server to become ready...")
-                ready = await pm.wait_ready()
-                if ready:
-                    logger.info("sd-server is ready")
-                else:
-                    logger.warning("sd-server did not become ready in time")
             yield
-        pm.stop()
 
     app = FastAPI(title="sd-server wrapper", lifespan=lifespan)
 
@@ -68,11 +65,10 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     app.include_router(create_civitai_router())  # Must be before catch-all proxy
     app.include_router(create_db_router())  # Must be before catch-all proxy
     app.include_router(create_gallery_router())  # Must be before catch-all proxy
-    app.include_router(create_models_router(pm))  # Must be before catch-all proxy
+    app.include_router(create_models_router())  # Must be before catch-all proxy
     app.include_router(create_download_router())  # Must be before catch-all proxy
-    app.include_router(create_generate_router(pm))  # Must be before catch-all proxy
-    app.include_router(create_router(pm))
-    app.state.pm = pm
+    app.include_router(create_generate_router())  # Must be before catch-all proxy
+    app.include_router(create_router())
     return app
 
 

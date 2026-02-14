@@ -243,3 +243,34 @@ def set_default_remote(name: str | None) -> None:
     else:
         config["default_remote"] = name
     save_config(config)
+
+
+# ============================================================================
+# SD Server Configuration
+# ============================================================================
+
+SD_SERVER_DEFAULT_URL = "http://localhost:1234"
+
+
+def get_sd_server_url() -> str:
+    """Get the sd-server URL.
+
+    Resolution order:
+    1. SD_SERVER_URL environment variable
+    2. config.toml [server].sd_server_url
+    3. Default: http://localhost:1234
+    """
+    # Check environment variable first
+    env_url = os.environ.get("SD_SERVER_URL")
+    if env_url:
+        return env_url
+
+    # Check config file
+    config = load_config()
+    server_config = config.get("server", {})
+    if isinstance(server_config, dict):
+        url = server_config.get("sd_server_url")
+        if url:
+            return str(url)
+
+    return SD_SERVER_DEFAULT_URL

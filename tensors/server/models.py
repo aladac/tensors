@@ -2,16 +2,5 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
-
-DEFAULT_PORT = 1234
-
-
-class ReloadRequest(BaseModel):
-    model: str
-
-
-class ServerConfig(BaseModel):
-    model: str
-    port: int = DEFAULT_PORT
-    args: list[str] = []
+# Note: ServerConfig and ReloadRequest were removed since we no longer manage
+# sd-server processes internally. The wrapper now proxies to an external sd-server.

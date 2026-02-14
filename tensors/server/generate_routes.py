@@ -5,17 +5,14 @@ from __future__ import annotations
 import base64
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
 
 from tensors.server.gallery import Gallery
-
-if TYPE_CHECKING:
-    from tensors.server.process import ProcessManager
 
 logger = logging.getLogger(__name__)
 
@@ -113,38 +110,30 @@ def _process_image(
     return image_info
 
 
-def _check_server_running(pm: ProcessManager) -> None:
-    """Check if sd-server is running, raise HTTPException if not."""
-    if pm.proc is None or pm.proc.poll() is not None:
-        raise HTTPException(status_code=503, detail="sd-server is not running")
-    if pm.config is None:
-        raise HTTPException(status_code=503, detail="sd-server not configured")
-
-
 # =============================================================================
 # Router Factory
 # =============================================================================
 
 
-def create_generate_router(pm: ProcessManager) -> APIRouter:
+def create_generate_router() -> APIRouter:
     """Build a router with /api/generate endpoint."""
     router = APIRouter(prefix="/api", tags=["generate"])
     gallery = Gallery()
 
     @router.post("/generate")
-    async def generate(req: GenerateRequest) -> dict[str, Any]:
+    async def generate(request: Request, req: GenerateRequest) -> dict[str, Any]:
         """Generate images with gallery integration."""
-        _check_server_running(pm)
-        assert pm.config is not None  # Verified by _check_server_running
-
+        sd_server_url = request.app.state.sd_server_url
         body = _build_sd_request(req)
-        url = f"http://127.0.0.1:{pm.config.port}/sdapi/v1/txt2img"
+        url = f"{sd_server_url}/sdapi/v1/txt2img"
 
         try:
             async with httpx.AsyncClient(timeout=300) as client:
                 response = await client.post(url, json=body)
                 response.raise_for_status()
                 result = response.json()
+        except httpx.ConnectError as e:
+            raise HTTPException(status_code=503, detail=f"Cannot connect to sd-server: {e}") from e
         except httpx.HTTPError as e:
             logger.exception("Generation failed")
             raise HTTPException(status_code=502, detail=f"sd-server error: {e}") from e
@@ -153,8 +142,11 @@ def create_generate_router(pm: ProcessManager) -> APIRouter:
         info = _parse_info(result.get("info", {}))
         all_seeds = info.get("all_seeds", [req.seed] * len(images_data))
 
+        # Get model info from sd-server response if available
+        model_name = info.get("sd_model_name") or info.get("model")
+
         output_images = [
-            _process_image(img_b64, i, all_seeds[i] if i < len(all_seeds) else req.seed + i, req, gallery, pm.config.model)
+            _process_image(img_b64, i, all_seeds[i] if i < len(all_seeds) else req.seed + i, req, gallery, model_name)
             for i, img_b64 in enumerate(images_data)
         ]
 
@@ -167,32 +159,34 @@ def create_generate_router(pm: ProcessManager) -> APIRouter:
         }
 
     @router.get("/samplers")
-    async def list_samplers() -> dict[str, Any]:
+    async def list_samplers(request: Request) -> dict[str, Any]:
         """List available samplers from sd-server."""
-        _check_server_running(pm)
-        assert pm.config is not None
-        url = f"http://127.0.0.1:{pm.config.port}/sdapi/v1/samplers"
+        sd_server_url = request.app.state.sd_server_url
+        url = f"{sd_server_url}/sdapi/v1/samplers"
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 return {"samplers": response.json()}
+        except httpx.ConnectError as e:
+            raise HTTPException(status_code=503, detail=f"Cannot connect to sd-server: {e}") from e
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"sd-server error: {e}") from e
 
     @router.get("/schedulers")
-    async def list_schedulers() -> dict[str, Any]:
+    async def list_schedulers(request: Request) -> dict[str, Any]:
         """List available schedulers from sd-server."""
-        _check_server_running(pm)
-        assert pm.config is not None
-        url = f"http://127.0.0.1:{pm.config.port}/sdapi/v1/schedulers"
+        sd_server_url = request.app.state.sd_server_url
+        url = f"{sd_server_url}/sdapi/v1/schedulers"
 
         try:
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(url)
                 response.raise_for_status()
                 return {"schedulers": response.json()}
+        except httpx.ConnectError as e:
+            raise HTTPException(status_code=503, detail=f"Cannot connect to sd-server: {e}") from e
         except httpx.HTTPError as e:
             raise HTTPException(status_code=502, detail=f"sd-server error: {e}") from e
 

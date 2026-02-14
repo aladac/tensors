@@ -55,9 +55,17 @@ def sync_to_junkpile() -> None:
     """Sync project to junkpile."""
     print("\n[3/4] Syncing to junkpile...")
     excludes = [
-        ".git", ".venv", "__pycache__", "*.pyc", ".mypy_cache",
-        ".pytest_cache", ".ruff_cache", ".coverage", "*.egg-info",
-        "node_modules", ".tmp",
+        ".git",
+        ".venv",
+        "__pycache__",
+        "*.pyc",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".coverage",
+        "*.egg-info",
+        "node_modules",
+        ".tmp",
     ]
     cmd = ["rsync", "-avz", "--delete"]
     for exc in excludes:

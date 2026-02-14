@@ -3,30 +3,18 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel as PydanticBaseModel
+from fastapi import APIRouter, Request
 
 from tensors.config import MODELS_DIR
 
 if TYPE_CHECKING:
-    from tensors.server.process import ProcessManager
+    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
-# Request/Response Models
-# =============================================================================
-
-
-class SwitchModelRequest(PydanticBaseModel):
-    """Request body for switching models."""
-
-    model: str  # Path to model file
+_HTTP_OK = 200
 
 
 # =============================================================================
@@ -76,7 +64,7 @@ def scan_checkpoints(directory: Path | None = None) -> list[dict[str, Any]]:
 # =============================================================================
 
 
-def create_models_router(pm: ProcessManager) -> APIRouter:
+def create_models_router() -> APIRouter:
     """Build a router with /api/models/* endpoints."""
     router = APIRouter(prefix="/api/models", tags=["models"])
 
@@ -90,61 +78,33 @@ def create_models_router(pm: ProcessManager) -> APIRouter:
         }
 
     @router.get("/active")
-    def get_active_model() -> dict[str, Any]:
-        """Get information about the currently loaded model."""
-        status = pm.status()
-        config = pm.config
+    async def get_active_model(request: Request) -> dict[str, Any]:
+        """Get information about the currently loaded model from sd-server."""
+        import httpx  # noqa: PLC0415
 
-        if config is None:
-            return {
-                "loaded": False,
-                "model": None,
-                "status": status.get("status"),
-            }
+        sd_server_url = request.app.state.sd_server_url
+
+        # Try to get current model from sd-server's options endpoint
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                response = await client.get(f"{sd_server_url}/sdapi/v1/options")
+                if response.status_code == _HTTP_OK:
+                    options = response.json()
+                    model_name = options.get("sd_model_checkpoint")
+                    return {
+                        "loaded": True,
+                        "model": model_name,
+                        "sd_server_url": sd_server_url,
+                    }
+        except httpx.HTTPError:
+            pass
 
         return {
-            "loaded": status.get("status") == "running",
-            "model": config.model,
-            "pid": status.get("pid"),
-            "port": config.port,
-            "status": status.get("status"),
+            "loaded": False,
+            "model": None,
+            "sd_server_url": sd_server_url,
+            "error": "Cannot connect to sd-server",
         }
-
-    @router.post("/switch")
-    async def switch_model(req: SwitchModelRequest) -> JSONResponse:
-        """Switch to a different model (hot reload)."""
-        model_path = Path(req.model)
-
-        # Validate model exists
-        if not model_path.exists():
-            raise HTTPException(status_code=400, detail=f"Model not found: {req.model}")
-
-        # Use existing reload logic
-        from tensors.server.models import ServerConfig  # noqa: PLC0415
-
-        new_config = ServerConfig(
-            model=req.model,
-            port=pm.config.port if pm.config else 1234,
-            args=pm.config.args if pm.config else [],
-        )
-
-        pm.stop()
-        pm.start(new_config)
-        ready = await pm.wait_ready()
-
-        if not ready:
-            return JSONResponse(
-                {"error": "sd-server failed to become ready", "model": req.model},
-                status_code=503,
-            )
-
-        return JSONResponse(
-            {
-                "ok": True,
-                "model": req.model,
-                "pid": pm.proc.pid if pm.proc else None,
-            }
-        )
 
     @router.get("/loras")
     def list_loras() -> dict[str, Any]:
