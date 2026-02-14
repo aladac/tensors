@@ -226,6 +226,76 @@
     .empty { text-align: center; padding: 4rem 1rem; color: #666; }
     .error { color: #dc2626; }
 
+    /* Generate controls */
+    .generate-controls {
+      padding: 1rem 1.5rem;
+      background: #0f0f0f;
+      border-top: 1px solid #333;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1.25rem;
+      justify-content: center;
+      align-items: center;
+    }
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+    .control-group label {
+      font-size: 0.8rem;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 500;
+    }
+    .control-group select,
+    .control-group input[type="number"] {
+      padding: 0.75rem 1rem;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #e5e5e5;
+      font-size: 0.9rem;
+      height: 46px;
+      box-sizing: border-box;
+    }
+    .control-group select:focus,
+    .control-group input[type="number"]:focus {
+      outline: none;
+      border-color: #4ade80;
+    }
+    .control-group select { min-width: 120px; cursor: pointer; }
+    .control-group input[type="number"] { width: 65px; text-align: center; }
+
+    /* Large styled selects (like prompt input) */
+    .control-group select.styled-select {
+      min-width: 180px;
+    }
+
+    /* Resolution buttons */
+    .res-buttons {
+      display: flex;
+      gap: 6px;
+    }
+    .res-btn {
+      padding: 0 0.9rem;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #888;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .res-btn:hover { border-color: #4ade80; color: #e5e5e5; }
+    .res-btn.active { background: #4ade80; color: #0f0f0f; border-color: #4ade80; }
+
     /* Search view */
     #search-view {
       display: flex;
@@ -540,10 +610,46 @@
     <!-- Generate View -->
     <div id="generate-view" class="view active">
       <div class="chat-area" id="chat-area"></div>
+      <div class="generate-controls">
+        <div class="control-group">
+          <label>Model</label>
+          <select id="checkpoint-select" class="styled-select"><option value="">Loading...</option></select>
+        </div>
+        <div class="control-group">
+          <label>LoRA</label>
+          <select id="lora-select" class="styled-select"><option value="">None</option></select>
+          <input type="number" id="lora-weight" value="0.8" min="0" max="2" step="0.1" title="LoRA weight">
+        </div>
+        <div class="control-group">
+          <label>Size</label>
+          <div class="res-size-group">
+            <div class="res-buttons" id="res-base-btns">
+              <button class="res-btn" data-base="512">512</button>
+              <button class="res-btn active" data-base="768">768</button>
+              <button class="res-btn" data-base="1024">1024</button>
+            </div>
+          </div>
+        </div>
+        <div class="control-group">
+          <label>Ratio</label>
+          <div class="res-buttons" id="res-ratio-btns">
+            <button class="res-btn" data-ratio="3:4" title="Portrait">3:4</button>
+            <button class="res-btn active" data-ratio="1:1" title="Square">1:1</button>
+            <button class="res-btn" data-ratio="4:3" title="Landscape">4:3</button>
+          </div>
+        </div>
+        <div class="control-group">
+          <label>Steps</label>
+          <input type="number" id="steps-input" value="20" min="1" max="50">
+        </div>
+        <div class="control-group">
+          <label>Batch</label>
+          <input type="number" id="batch-input" value="1" min="1" max="8">
+        </div>
+      </div>
       <div class="input-area">
         <div class="input-row">
           <input type="text" id="prompt-input" placeholder="Describe what you want to generate..." autofocus>
-          <input type="number" id="steps-input" value="20" min="1" max="50" title="Steps">
           <button id="generate-btn">Generate</button>
         </div>
       </div>
@@ -652,7 +758,95 @@
     const chatArea = document.getElementById('chat-area');
     const promptInput = document.getElementById('prompt-input');
     const stepsInput = document.getElementById('steps-input');
+    const batchInput = document.getElementById('batch-input');
     const generateBtn = document.getElementById('generate-btn');
+    const checkpointSelect = document.getElementById('checkpoint-select');
+    const loraSelect = document.getElementById('lora-select');
+    const loraWeight = document.getElementById('lora-weight');
+
+    // Resolution state
+    let currentBase = 768;
+    let currentRatio = '1:1';
+
+    // Resolution presets: base -> ratio -> [width, height]
+    const resolutions = {
+      512:  { '1:1': [512, 512],  '4:3': [512, 384],  '3:4': [384, 512] },
+      768:  { '1:1': [768, 768],  '4:3': [768, 576],  '3:4': [576, 768] },
+      1024: { '1:1': [1024, 1024], '4:3': [1024, 768], '3:4': [768, 1024] }
+    };
+
+    function getResolution() {
+      return resolutions[currentBase][currentRatio];
+    }
+
+    // Resolution button handlers
+    document.querySelectorAll('#res-base-btns .res-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('#res-base-btns .res-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentBase = parseInt(btn.dataset.base);
+      };
+    });
+
+    document.querySelectorAll('#res-ratio-btns .res-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('#res-ratio-btns .res-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentRatio = btn.dataset.ratio;
+      };
+    });
+
+    // Load models on init
+    async function loadModels() {
+      try {
+        const [modelsRes, lorasRes, activeRes] = await Promise.all([
+          fetch('/api/models'),
+          fetch('/api/models/loras'),
+          fetch('/api/models/active')
+        ]);
+        const models = await modelsRes.json();
+        const loras = await lorasRes.json();
+        const active = await activeRes.json();
+
+        // Populate checkpoints
+        checkpointSelect.innerHTML = models.models.map(m =>
+          `<option value="${m.path}" ${m.path === active.model ? 'selected' : ''}>${m.name}</option>`
+        ).join('');
+
+        // Populate LoRAs
+        loraSelect.innerHTML = '<option value="">None</option>' +
+          loras.loras.map(l => `<option value="${l.path}">${l.name}</option>`).join('');
+      } catch (e) {
+        console.error('Failed to load models:', e);
+        checkpointSelect.innerHTML = '<option value="">Failed to load</option>';
+      }
+    }
+
+    // Switch checkpoint
+    checkpointSelect.onchange = async () => {
+      const model = checkpointSelect.value;
+      if (!model) return;
+
+      checkpointSelect.disabled = true;
+      generateBtn.disabled = true;
+
+      try {
+        const res = await fetch('/api/models/switch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model })
+        });
+        const data = await res.json();
+        if (data.error) {
+          alert('Failed to switch model: ' + data.error);
+        }
+      } catch (e) {
+        alert('Failed to switch model: ' + e.message);
+      }
+
+      checkpointSelect.disabled = false;
+      generateBtn.disabled = false;
+    };
 
     promptInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) {
@@ -667,55 +861,83 @@
       if (!prompt) return;
 
       const steps = parseInt(stepsInput.value) || 20;
+      const batch = parseInt(batchInput.value) || 1;
+      const [width, height] = getResolution();
+      const lora = loraSelect.value;
+      const weight = parseFloat(loraWeight.value) || 0.8;
+
+      // Build prompt with LoRA if selected
+      let finalPrompt = prompt;
+      if (lora) {
+        const loraName = loraSelect.options[loraSelect.selectedIndex].text;
+        finalPrompt = `<lora:${loraName}:${weight}> ${prompt}`;
+      }
+
       promptInput.value = '';
       generateBtn.disabled = true;
 
       // Add message
       const msgDiv = document.createElement('div');
       msgDiv.className = 'chat-message';
+      const resLabel = `${width}×${height}`;
       msgDiv.innerHTML = `
-        <div class="chat-prompt">${escapeHtml(prompt)}</div>
+        <div class="chat-prompt">${escapeHtml(prompt)} <span style="color:#666;font-size:0.8em">[${resLabel}, ${steps} steps${batch > 1 ? ', batch ' + batch : ''}${lora ? ', +LoRA' : ''}]</span></div>
         <div class="chat-images">
-          <div class="generating">Generating</div>
+          ${Array(batch).fill('<div class="generating">Generating</div>').join('')}
         </div>
       `;
       chatArea.appendChild(msgDiv);
       chatArea.scrollTop = chatArea.scrollHeight;
 
-      try {
-        const res = await fetch('/api/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            prompt: prompt,
-            steps: steps,
-            width: 512,
-            height: 512,
-            save_to_gallery: true
-          })
-        });
-        const data = await res.json();
-        const imagesDiv = msgDiv.querySelector('.chat-images');
+      const imagesDiv = msgDiv.querySelector('.chat-images');
+      let allImages = [];
 
-        if (data.images && data.images.length > 0) {
-          imagesDiv.innerHTML = data.images.map(img => `
-            <a href="javascript:void(0)" class="glightbox" data-type="image" data-href="/api/images/${img.id}">
-              <img src="/api/images/${img.id}" alt="${img.id}">
-            </a>
-          `).join('');
-          initLightbox();
-        } else if (data.error) {
-          imagesDiv.innerHTML = `<div class="empty error">${escapeHtml(data.error)}</div>`;
-        } else {
+      try {
+        // Generate batch sequentially
+        for (let i = 0; i < batch; i++) {
+          const res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prompt: finalPrompt,
+              steps: steps,
+              width: width,
+              height: height,
+              seed: -1,
+              save_to_gallery: true
+            })
+          });
+          const data = await res.json();
+
+          if (data.images && data.images.length > 0) {
+            allImages.push(...data.images);
+            // Update display progressively
+            imagesDiv.innerHTML = allImages.map(img => `
+              <a href="javascript:void(0)" class="glightbox" data-type="image" data-href="/api/images/${img.id}">
+                <img src="/api/images/${img.id}" alt="${img.id}">
+              </a>
+            `).join('') + (i < batch - 1 ? '<div class="generating">Generating</div>'.repeat(batch - i - 1) : '');
+            initLightbox();
+          } else if (data.error) {
+            imagesDiv.innerHTML = `<div class="empty error">${escapeHtml(data.error)}</div>`;
+            break;
+          }
+          chatArea.scrollTop = chatArea.scrollHeight;
+        }
+
+        if (allImages.length === 0) {
           imagesDiv.innerHTML = '<div class="empty error">Generation failed</div>';
         }
       } catch (e) {
-        msgDiv.querySelector('.chat-images').innerHTML = '<div class="empty error">Error: ' + escapeHtml(e.message) + '</div>';
+        imagesDiv.innerHTML = '<div class="empty error">Error: ' + escapeHtml(e.message) + '</div>';
       }
 
       generateBtn.disabled = false;
       chatArea.scrollTop = chatArea.scrollHeight;
     }
+
+    // Load models on page load
+    loadModels();
 
     // Search
     const searchInput = document.getElementById('search-input');
