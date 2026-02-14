@@ -26,3 +26,11 @@ lint:
 # Type check only
 types:
     uv run mypy tensors/
+
+# Run UI dev server with hot reload
+ui-dev:
+    cd tensors/server/ui && npm run dev
+
+# Build UI for production
+ui-build:
+    cd tensors/server/ui && npm run build
