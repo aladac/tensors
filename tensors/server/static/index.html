@@ -46,9 +46,24 @@
     /* Main content */
     .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 
-    /* Views */
-    .view { display: none; flex: 1; flex-direction: column; overflow: hidden; }
-    .view.active { display: flex; }
+    /* Views - only one visible at a time */
+    .view {
+      display: none !important;
+      flex: 1;
+      flex-direction: column;
+      overflow: hidden;
+      position: absolute;
+      visibility: hidden;
+      height: 0;
+      width: 0;
+    }
+    .view.active {
+      display: flex !important;
+      position: relative;
+      visibility: visible;
+      height: auto;
+      width: auto;
+    }
 
     /* Gallery view */
     #gallery-view { overflow-y: auto; }
