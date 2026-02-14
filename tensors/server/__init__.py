@@ -11,6 +11,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 
+from tensors.server.civitai_routes import create_civitai_router
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
 from tensors.server.gallery_routes import create_gallery_router
@@ -56,6 +57,7 @@ def create_app(config: ServerConfig | None = None) -> FastAPI:
     async def gallery_ui() -> FileResponse:
         return FileResponse(static_dir / "index.html")
 
+    app.include_router(create_civitai_router())  # Must be before catch-all proxy
     app.include_router(create_db_router())  # Must be before catch-all proxy
     app.include_router(create_gallery_router())  # Must be before catch-all proxy
     app.include_router(create_models_router(pm))  # Must be before catch-all proxy

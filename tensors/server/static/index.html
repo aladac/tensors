@@ -210,6 +210,296 @@
 
     .empty { text-align: center; padding: 4rem 1rem; color: #666; }
     .error { color: #dc2626; }
+
+    /* Search view */
+    #search-view {
+      display: flex;
+      flex-direction: column;
+    }
+    .search-header {
+      padding: 1rem;
+      background: #0f0f0f;
+      border-bottom: 1px solid #333;
+    }
+    @media (min-width: 768px) {
+      .search-header { padding: 1.5rem; }
+    }
+    .search-row {
+      display: flex;
+      gap: 10px;
+      max-width: 1000px;
+      margin: 0 auto;
+      flex-wrap: wrap;
+    }
+    .search-row input[type="text"] {
+      flex: 1;
+      min-width: 200px;
+      padding: 0.75rem 1rem;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #e5e5e5;
+      font-size: 1rem;
+    }
+    .search-row input[type="text"]::placeholder { color: #666; }
+    .search-row input[type="text"]:focus {
+      outline: none;
+      border-color: #4ade80;
+    }
+    .search-row select {
+      padding: 0.75rem 1rem;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #1a1a1a;
+      color: #e5e5e5;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+    .search-row select:focus {
+      outline: none;
+      border-color: #4ade80;
+    }
+    .search-row button {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      background: #4ade80;
+      color: #0f0f0f;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .search-row button:hover { background: #22c55e; }
+    .search-row button:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+    .search-results {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+    @media (min-width: 768px) {
+      .search-results { padding: 1.5rem; }
+    }
+
+    /* Model cards */
+    .model-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 1rem;
+    }
+    @media (min-width: 768px) {
+      .model-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.5rem; }
+    }
+    .model-card {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      overflow: hidden;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .model-card:hover {
+      border-color: #4ade80;
+      transform: translateY(-2px);
+    }
+    .model-card-image {
+      width: 100%;
+      aspect-ratio: 16/10;
+      object-fit: cover;
+      background: #0f0f0f;
+    }
+    .model-card-body {
+      padding: 1rem;
+    }
+    .model-card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: #e5e5e5;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .model-card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+    .model-tag {
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    .model-tag.type {
+      background: #4ade80;
+      color: #0f0f0f;
+    }
+    .model-tag.base {
+      background: #333;
+      color: #e5e5e5;
+    }
+    .model-tag.nsfw {
+      background: #dc2626;
+      color: #fff;
+    }
+    .model-card-stats {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .model-card-stats span {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .model-card-stats svg {
+      width: 14px;
+      height: 14px;
+    }
+    .model-card-footer {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .model-card-creator {
+      font-size: 0.8rem;
+      color: #888;
+    }
+    .model-card-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .model-card-actions button {
+      padding: 0.5rem 0.75rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-view {
+      background: #333;
+      color: #e5e5e5;
+    }
+    .btn-view:hover { background: #444; }
+    .btn-download {
+      background: #4ade80;
+      color: #0f0f0f;
+    }
+    .btn-download:hover { background: #22c55e; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.8);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.active { display: flex; }
+    .modal {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 12px;
+      max-width: 600px;
+      width: 100%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+    .modal-header {
+      padding: 1rem;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: #888;
+      cursor: pointer;
+      padding: 0.25rem;
+    }
+    .modal-close:hover { color: #e5e5e5; }
+    .modal-body {
+      padding: 1rem;
+    }
+    .modal-images {
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .modal-images img {
+      width: 120px;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 8px;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .modal-images img:hover { border-color: #4ade80; }
+    .modal-info {
+      display: grid;
+      gap: 0.75rem;
+    }
+    .modal-info-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+    }
+    .modal-info-row label {
+      color: #888;
+    }
+    .modal-info-row span {
+      color: #e5e5e5;
+    }
+    .modal-versions {
+      margin-top: 1rem;
+    }
+    .modal-versions h4 {
+      font-size: 0.9rem;
+      color: #888;
+      margin-bottom: 0.5rem;
+    }
+    .version-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .version-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      background: #0f0f0f;
+      border-radius: 8px;
+    }
+    .version-name {
+      font-size: 0.9rem;
+    }
+    .version-base {
+      font-size: 0.75rem;
+      color: #888;
+    }
   </style>
 </head>
 <body>
@@ -217,6 +507,11 @@
     <button id="nav-generate" title="Generate" class="active">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.5 19.5h3m-1.5-1.5v3" />
+      </svg>
+    </button>
+    <button id="nav-search" title="Search CivitAI">
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
       </svg>
     </button>
     <button id="nav-gallery" title="Gallery">
@@ -239,11 +534,61 @@
       </div>
     </div>
 
+    <!-- Search View -->
+    <div id="search-view" class="view">
+      <div class="search-header">
+        <div class="search-row">
+          <input type="text" id="search-input" placeholder="Search CivitAI models...">
+          <select id="search-type">
+            <option value="">All Types</option>
+            <option value="Checkpoint">Checkpoint</option>
+            <option value="LORA">LoRA</option>
+            <option value="LoCon">LoCon</option>
+            <option value="TextualInversion">Embedding</option>
+            <option value="VAE">VAE</option>
+            <option value="Controlnet">ControlNet</option>
+          </select>
+          <select id="search-base">
+            <option value="">All Base Models</option>
+            <option value="SD 1.5">SD 1.5</option>
+            <option value="SDXL 1.0">SDXL</option>
+            <option value="Pony">Pony</option>
+            <option value="Illustrious">Illustrious</option>
+            <option value="Flux.1 D">Flux</option>
+          </select>
+          <select id="search-sort">
+            <option value="Most Downloaded">Most Downloaded</option>
+            <option value="Highest Rated">Highest Rated</option>
+            <option value="Newest">Newest</option>
+          </select>
+          <button id="search-btn">Search</button>
+        </div>
+      </div>
+      <div class="search-results" id="search-results">
+        <div class="empty">Search for models on CivitAI</div>
+      </div>
+    </div>
+
     <!-- Gallery View -->
     <div id="gallery-view" class="view">
       <div id="gallery" class="gallery"></div>
     </div>
   </main>
+
+  <!-- Model Detail Modal -->
+  <div class="modal-overlay" id="model-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Model Details</h3>
+        <button class="modal-close" onclick="closeModal()">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/glightbox/dist/js/glightbox.min.js"></script>
   <script>
@@ -251,6 +596,7 @@
 
     // Navigation
     document.getElementById('nav-generate').onclick = () => switchView('generate');
+    document.getElementById('nav-search').onclick = () => switchView('search');
     document.getElementById('nav-gallery').onclick = () => switchView('gallery');
 
     function switchView(view) {
@@ -354,6 +700,252 @@
 
       generateBtn.disabled = false;
       chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    // Search
+    const searchInput = document.getElementById('search-input');
+    const searchType = document.getElementById('search-type');
+    const searchBase = document.getElementById('search-base');
+    const searchSort = document.getElementById('search-sort');
+    const searchBtn = document.getElementById('search-btn');
+    const searchResults = document.getElementById('search-results');
+
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        searchModels();
+      }
+    });
+    searchBtn.onclick = searchModels;
+
+    async function searchModels() {
+      const query = searchInput.value.trim();
+      const type = searchType.value;
+      const base = searchBase.value;
+      const sort = searchSort.value;
+
+      searchBtn.disabled = true;
+      searchResults.innerHTML = '<div class="empty">Searching...</div>';
+
+      try {
+        const params = new URLSearchParams({ limit: '24', sort });
+        if (query) params.append('query', query);
+        if (type) params.append('types', type);
+        if (base) params.append('baseModels', base);
+
+        const res = await fetch('/api/civitai/search?' + params.toString());
+        const data = await res.json();
+
+        if (data.error) {
+          searchResults.innerHTML = `<div class="empty error">${escapeHtml(data.error)}</div>`;
+          return;
+        }
+
+        const items = data.items || [];
+        if (items.length === 0) {
+          searchResults.innerHTML = '<div class="empty">No models found</div>';
+          return;
+        }
+
+        searchResults.innerHTML = `<div class="model-grid">${items.map(renderModelCard).join('')}</div>`;
+      } catch (e) {
+        searchResults.innerHTML = '<div class="empty error">Search failed: ' + escapeHtml(e.message) + '</div>';
+      }
+
+      searchBtn.disabled = false;
+    }
+
+    function renderModelCard(model) {
+      const preview = getPreviewImage(model);
+      const version = model.modelVersions?.[0];
+      const baseModel = version?.baseModel || '';
+      const tags = [];
+
+      tags.push(`<span class="model-tag type">${escapeHtml(model.type)}</span>`);
+      if (baseModel) tags.push(`<span class="model-tag base">${escapeHtml(baseModel)}</span>`);
+      if (model.nsfw) tags.push(`<span class="model-tag nsfw">NSFW</span>`);
+
+      return `
+        <div class="model-card">
+          <img class="model-card-image" src="${preview}" alt="${escapeHtml(model.name)}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%231a1a1a%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23666%22 font-size=%2212%22>No Image</text></svg>'">
+          <div class="model-card-body">
+            <div class="model-card-title">${escapeHtml(model.name)}</div>
+            <div class="model-card-meta">${tags.join('')}</div>
+            <div class="model-card-stats">
+              <span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                </svg>
+                ${formatNumber(model.stats?.downloadCount || 0)}
+              </span>
+              <span>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6.633 10.5c.806 0 1.533-.446 2.031-1.08a9.041 9.041 0 012.861-2.4c.723-.384 1.35-.956 1.653-1.715a4.498 4.498 0 00.322-1.672V3a.75.75 0 01.75-.75A2.25 2.25 0 0116.5 4.5c0 1.152-.26 2.243-.723 3.218-.266.558.107 1.282.725 1.282h3.126c1.026 0 1.945.694 2.054 1.715.045.422.068.85.068 1.285a11.95 11.95 0 01-2.649 7.521c-.388.482-.987.729-1.605.729H13.48a4.53 4.53 0 01-1.423-.23l-3.114-1.04a4.501 4.501 0 00-1.423-.23H5.904M14.25 9h2.25M5.904 18.75c.083.205.173.405.27.602.197.4-.078.898-.523.898h-.908c-.889 0-1.713-.518-1.972-1.368a12 12 0 01-.521-3.507c0-1.553.295-3.036.831-4.398C3.387 10.203 4.167 9.75 5 9.75h1.053c.472 0 .745.556.5.96a8.958 8.958 0 00-1.302 4.665c0 1.194.232 2.333.654 3.375z" />
+                </svg>
+                ${formatNumber(model.stats?.thumbsUpCount || 0)}
+              </span>
+            </div>
+          </div>
+          <div class="model-card-footer">
+            <span class="model-card-creator">by ${escapeHtml(model.creator?.username || 'Unknown')}</span>
+            <div class="model-card-actions">
+              <button class="btn-view" onclick="viewModel(${model.id})">View</button>
+              <button class="btn-download" onclick="downloadModel(${model.id}, '${escapeHtml(model.name)}')">Download</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function getPreviewImage(model) {
+      const version = model.modelVersions?.[0];
+      if (version?.images?.length > 0) {
+        const img = version.images[0];
+        return img.url || '';
+      }
+      return '';
+    }
+
+    function formatNumber(n) {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+      return n.toString();
+    }
+
+    // Modal
+    async function viewModel(modelId) {
+      const modal = document.getElementById('model-modal');
+      const modalBody = document.getElementById('modal-body');
+      const modalTitle = document.getElementById('modal-title');
+
+      modal.classList.add('active');
+      modalBody.innerHTML = '<div class="empty">Loading...</div>';
+
+      try {
+        const res = await fetch(`/api/civitai/model/${modelId}`);
+        const model = await res.json();
+
+        if (model.error) {
+          modalBody.innerHTML = `<div class="empty error">${escapeHtml(model.error)}</div>`;
+          return;
+        }
+
+        modalTitle.textContent = model.name;
+
+        const version = model.modelVersions?.[0];
+        const images = version?.images || [];
+        const trainedWords = version?.trainedWords || [];
+
+        let html = '';
+
+        // Images
+        if (images.length > 0) {
+          html += `<div class="modal-images">
+            ${images.slice(0, 6).map(img => `<img src="${img.url}" alt="Preview" class="glightbox-modal" data-type="image" data-href="${img.url}">`).join('')}
+          </div>`;
+        }
+
+        // Info
+        html += `<div class="modal-info">
+          <div class="modal-info-row"><label>Type</label><span>${escapeHtml(model.type)}</span></div>
+          <div class="modal-info-row"><label>Creator</label><span>${escapeHtml(model.creator?.username || 'Unknown')}</span></div>
+          <div class="modal-info-row"><label>Downloads</label><span>${formatNumber(model.stats?.downloadCount || 0)}</span></div>
+          <div class="modal-info-row"><label>Rating</label><span>${formatNumber(model.stats?.thumbsUpCount || 0)} likes</span></div>
+        </div>`;
+
+        // Trigger words
+        if (trainedWords.length > 0) {
+          html += `<div class="modal-versions">
+            <h4>Trigger Words</h4>
+            <div class="version-list">
+              <div class="version-item">
+                <span class="version-name" style="word-break: break-all;">${trainedWords.map(w => escapeHtml(w)).join(', ')}</span>
+              </div>
+            </div>
+          </div>`;
+        }
+
+        // Versions
+        if (model.modelVersions?.length > 0) {
+          html += `<div class="modal-versions">
+            <h4>Versions</h4>
+            <div class="version-list">
+              ${model.modelVersions.slice(0, 5).map(v => `
+                <div class="version-item">
+                  <div>
+                    <div class="version-name">${escapeHtml(v.name)}</div>
+                    <div class="version-base">${escapeHtml(v.baseModel || '')}</div>
+                  </div>
+                  <button class="btn-download" onclick="downloadVersion(${v.id}, '${escapeHtml(model.name)}')">Download</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>`;
+        }
+
+        modalBody.innerHTML = html;
+
+        // Init lightbox for modal images
+        GLightbox({ selector: '.glightbox-modal' });
+
+      } catch (e) {
+        modalBody.innerHTML = '<div class="empty error">Failed to load model: ' + escapeHtml(e.message) + '</div>';
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('model-modal').classList.remove('active');
+    }
+
+    // Close modal on overlay click
+    document.getElementById('model-modal').addEventListener('click', e => {
+      if (e.target.classList.contains('modal-overlay')) closeModal();
+    });
+
+    // Close modal on Escape
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') closeModal();
+    });
+
+    // Download
+    async function downloadModel(modelId, modelName) {
+      if (!confirm(`Download "${modelName}" to the server?`)) return;
+
+      try {
+        const res = await fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model_id: modelId })
+        });
+        const data = await res.json();
+        if (data.error) {
+          alert('Download failed: ' + data.error);
+        } else {
+          alert('Download started! Check server for progress.');
+        }
+      } catch (e) {
+        alert('Download failed: ' + e.message);
+      }
+    }
+
+    async function downloadVersion(versionId, modelName) {
+      if (!confirm(`Download "${modelName}" (version ${versionId}) to the server?`)) return;
+
+      try {
+        const res = await fetch('/api/download', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version_id: versionId })
+        });
+        const data = await res.json();
+        if (data.error) {
+          alert('Download failed: ' + data.error);
+        } else {
+          alert('Download started! Check server for progress.');
+        }
+      } catch (e) {
+        alert('Download failed: ' + e.message);
+      }
     }
 
     function escapeHtml(text) {
