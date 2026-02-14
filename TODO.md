@@ -1,12 +1,12 @@
 # TODO: tsr Server/Client Architecture
 
-## Phase 1: Model-Specific Docker Images
-- [ ] Step 1.1: Create `rocm-docker/model-defaults.toml` (optimal params per model family)
-- [ ] Step 1.2: Parameterize `Dockerfile.sd-server` with `MODEL_FAMILY` build arg
-- [ ] Step 1.3: Create `rocm-docker/build-all.sh` (build all model variants)
+## Phase 1: Model-Specific Docker Images (SKIPPED)
+- [x] Step 1.1: ~~Create `rocm-docker/model-defaults.toml`~~ (skipped)
+- [x] Step 1.2: ~~Parameterize `Dockerfile.sd-server`~~ (skipped)
+- [x] Step 1.3: ~~Create `rocm-docker/build-all.sh`~~ (skipped)
 
 ## Phase 2: Models Database in tensors
-- [ ] Step 2.1: Create `tensors/db.py` + `tensors/schema.sql` (SQLite wrapper, schema, CRUD)
+- [x] Step 2.1: Create `tensors/db.py` + `tensors/schema.sql` (SQLite wrapper, schema, CRUD)
 - [ ] Step 2.2: Add `tsr db` CLI commands (scan, link, cache, list, search, triggers)
 - [ ] Step 2.3: Add `/api/db/*` endpoints (files, models, triggers, scan, link)
 
@@ -21,10 +21,10 @@
 - [ ] Step 4.2: Add `[remotes]` config section + `--remote` flag support
 - [ ] Step 4.3: Update CLI commands with `--remote` support (generate, images, models, dl, db)
 
-## Phase 5: Docker Deployment Automation
-- [ ] Step 5.1: Create `rocm-docker/docker-compose.yml` (multi-model setup)
-- [ ] Step 5.2: Create `rocm-docker/deploy.sh` (one-command deploy)
-- [ ] Step 5.3: Create `rocm-docker/tsr-server.service` (systemd unit)
+## Phase 5: Docker Deployment Automation (SKIPPED)
+- [x] Step 5.1: ~~Create `rocm-docker/docker-compose.yml`~~ (skipped)
+- [x] Step 5.2: ~~Create `rocm-docker/deploy.sh`~~ (skipped)
+- [x] Step 5.3: ~~Create `rocm-docker/tsr-server.service`~~ (skipped)
 
 ## Phase 6: Tests
 - [ ] Step 6.1: `tests/test_db.py` (database module tests)

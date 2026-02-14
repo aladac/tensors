@@ -60,28 +60,37 @@ def read_safetensor_metadata(file_path: Path) -> dict[str, Any]:
     }
 
 
-def compute_sha256(file_path: Path, console: Console) -> str:
-    """Compute SHA256 hash of a file with progress display."""
+def compute_sha256(file_path: Path, console: Console | None = None) -> str:
+    """Compute SHA256 hash of a file with optional progress display.
+
+    If console is provided, shows a progress bar. Otherwise computes silently.
+    """
     file_size = file_path.stat().st_size
     sha256 = hashlib.sha256()
     chunk_size = 1024 * 1024 * 8  # 8MB chunks
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        DownloadColumn(),
-        TransferSpeedColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"[cyan]Hashing {file_path.name}...", total=file_size)
+    if console is not None:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            DownloadColumn(),
+            TransferSpeedColumn(),
+            TimeRemainingColumn(),
+            console=console,
+        ) as progress:
+            task = progress.add_task(f"[cyan]Hashing {file_path.name}...", total=file_size)
 
+            with file_path.open("rb") as f:
+                while chunk := f.read(chunk_size):
+                    sha256.update(chunk)
+                    progress.update(task, advance=len(chunk))
+    else:
+        # Silent mode - no progress display
         with file_path.open("rb") as f:
             while chunk := f.read(chunk_size):
                 sha256.update(chunk)
-                progress.update(task, advance=len(chunk))
 
     return sha256.hexdigest().upper()
 
