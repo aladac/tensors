@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+    from pathlib import Path
 
 
 class TsrClientError(Exception):
