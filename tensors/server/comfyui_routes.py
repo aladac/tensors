@@ -237,14 +237,19 @@ async def logout() -> Response:
     return response
 
 
-def _check_auth(comfy_session: str | None, path: str = "") -> None:
+def _check_auth(comfy_session: str | None, path: str = "", method: str = "GET") -> None:
     """Check if user is authenticated, raise redirect if not.
 
     Static assets (JS, CSS, fonts, images) are allowed without auth
     because modulepreload/crossorigin requests don't send cookies.
+    OPTIONS requests (CORS preflight) are also allowed without auth.
     """
     if not COMFYUI_USER:
         # Auth not configured, allow access
+        return
+
+    # Allow CORS preflight requests (they don't send cookies)
+    if method == "OPTIONS":
         return
 
     # Allow static assets without auth (modulepreload doesn't send cookies)
@@ -262,7 +267,7 @@ def _check_auth(comfy_session: str | None, path: str = "") -> None:
 @router.api_route("/comfy/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def proxy_comfyui(request: Request, path: str, comfy_session: str | None = Cookie(default=None)) -> Response:
     """Proxy all HTTP requests to ComfyUI."""
-    _check_auth(comfy_session, path)
+    _check_auth(comfy_session, path, request.method)
 
     # Build target URL
     target_url = f"{COMFYUI_URL}/{path}"
