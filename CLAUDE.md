@@ -134,12 +134,27 @@ curl -H "X-API-Key: test" http://localhost:8000/api/db/stats
 
 Tags trigger PyPI publish: `git tag v0.1.x && git push origin v0.1.x`
 
-## TODO: ComfyUI Integration
+## ComfyUI Integration
 
-ComfyUI is running on junkpile (port 8188) but NOT integrated with tensors.
+ComfyUI GUI is accessible via tensors reverse proxy with session auth:
 
-Needed:
-- [ ] Add `/api/generate` endpoint that proxies to ComfyUI
-- [ ] Workflow template management
-- [ ] Queue job → poll for completion → return image
-- [ ] Config: `[comfyui] url = "http://127.0.0.1:8188"`
+**URL:** https://tensors-api.saiden.dev/comfy/login
+
+**Environment Variables:**
+```bash
+COMFYUI_URL=http://127.0.0.1:8188   # ComfyUI backend (localhost only)
+COMFYUI_USER=admin                   # Login username
+COMFYUI_PASS=<password>              # Login password
+SESSION_SECRET=<random-string>       # Cookie signing secret
+```
+
+**Flow:**
+1. User visits `/comfy/login` → dark mode login page
+2. Auth with static user/pass → session cookie set
+3. All `/comfy/*` requests proxied to ComfyUI (HTTP + WebSocket)
+4. Full GUI works: queue, previews, node editor, etc.
+
+**Security:**
+- ComfyUI listens on localhost only (not exposed)
+- tensors handles auth via session cookies
+- WebSocket connections also authenticated
