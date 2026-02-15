@@ -44,13 +44,21 @@ pip install tensors[server]
 
 ## Usage
 
-### Search CivitAI
+### Search Models
+
+Search across CivitAI and Hugging Face with a unified interface.
 
 ```bash
-# Search by query
-tsr search "illustrious"
+# Search both CivitAI and Hugging Face (default)
+tsr search "flux lora"
 
-# Filter by type and base model
+# Search CivitAI only
+tsr search "illustrious" -P civitai
+
+# Search Hugging Face only
+tsr search "flux" -P hf
+
+# Filter by type and base model (CivitAI)
 tsr search -t lora -b sdxl
 
 # Sort by newest, limit results
@@ -59,11 +67,15 @@ tsr search -t checkpoint -s newest -n 10
 # Filter by tag and period
 tsr search --tag anime -p week -b illustrious
 
-# By creator
-tsr search -u "username"
+# By creator/author
+tsr search -u "username"           # CivitAI
+tsr search -a "stabilityai" -P hf  # Hugging Face
 
 # SFW only with commercial use filter
 tsr search --sfw --commercial sell
+
+# Hugging Face pipeline filter
+tsr search --pipeline text-to-image -P hf
 ```
 
 ### Get Model Info
@@ -94,15 +106,9 @@ tsr dl -m 12345 -o ./models
 
 ### Hugging Face Integration
 
-Search and download safetensor files from Hugging Face Hub.
+Get info and download safetensor files from Hugging Face Hub.
 
 ```bash
-# Search for models with safetensor files
-tsr hf search "flux"
-
-# Filter by author or pipeline
-tsr hf search -a stabilityai -p text-to-image
-
 # Get model info and list safetensor files
 tsr hf get black-forest-labs/FLUX.1-schnell
 
@@ -115,6 +121,8 @@ tsr hf dl black-forest-labs/FLUX.1-schnell -f ae.safetensors
 # Download all safetensor files from a model
 tsr hf dl author/model --all -o ./models
 ```
+
+> **Note:** For searching Hugging Face, use `tsr search -P hf "query"` (see [Search Models](#search-models)).
 
 ### Inspect Local Files
 
@@ -303,28 +311,27 @@ Data is stored in XDG-compliant paths:
 
 ## Search Options
 
-| Option | Values |
-|--------|--------|
-| `-t, --type` | checkpoint, lora, embedding, vae, controlnet, locon |
-| `-b, --base` | sd14, sd15, sd2, sdxl, pony, flux, illustrious, noobai, auraflow |
-| `-s, --sort` | downloads, rating, newest |
-| `-n, --limit` | Number of results (default: 25) |
-| `-p, --period` | all, year, month, week, day |
-| `--tag` | Filter by tag (e.g., "anime") |
-| `-u, --user` | Filter by creator username |
-| `--nsfw` | none, soft, mature, x |
-| `--sfw` | Exclude NSFW content |
-| `--commercial` | none, image, rent, sell |
-| `--page` | Page number for pagination |
+| Option | Values | Provider |
+|--------|--------|----------|
+| `-P, --provider` | civitai, hf, all (default: all) | Both |
+| `-t, --type` | checkpoint, lora, embedding, vae, controlnet, locon | CivitAI |
+| `-b, --base` | sd14, sd15, sd2, sdxl, pony, flux, illustrious, noobai, auraflow | CivitAI |
+| `-s, --sort` | downloads, rating, newest | Both |
+| `-n, --limit` | Number of results (default: 25) | Both |
+| `-p, --period` | all, year, month, week, day | CivitAI |
+| `--tag` | Filter by tag (e.g., "anime") | Both |
+| `-u, --user` | Filter by creator username | CivitAI |
+| `-a, --author` | Filter by author/organization | HuggingFace |
+| `--pipeline` | Pipeline tag (text-to-image, etc.) | HuggingFace |
+| `--nsfw` | none, soft, mature, x | CivitAI |
+| `--sfw` | Exclude NSFW content | CivitAI |
+| `--commercial` | none, image, rent, sell | CivitAI |
+| `--page` | Page number for pagination | CivitAI |
 
-## Hugging Face Options
+## Hugging Face Download Options
 
 | Option | Description |
 |--------|-------------|
-| `-a, --author` | Filter by author/organization |
-| `-p, --pipeline` | Pipeline tag (text-to-image, text-generation, etc.) |
-| `-s, --sort` | Sort by (downloads, likes, created_at, trending_score) |
-| `-n, --limit` | Number of results (default: 25) |
 | `-f, --file` | Specific file to download |
 | `--all` | Download all safetensor files |
 | `-o, --output` | Output directory |
@@ -361,6 +368,7 @@ When running `tsr serve`, the following endpoints are available:
 | `/status` | GET | Server status (public) |
 | `/docs` | GET | OpenAPI documentation (public) |
 | `/reload` | POST | Hot-reload with new model |
+| `/api/search` | GET | Unified search (CivitAI + HuggingFace) |
 | `/api/images` | GET | List gallery images |
 | `/api/images/{id}` | GET | Get image file |
 | `/api/images/{id}/meta` | GET | Get image metadata |
@@ -377,6 +385,37 @@ When running `tsr serve`, the following endpoints are available:
 | `/api/db/stats` | GET | Database statistics |
 
 All sd-server endpoints (`/sdapi/v1/*`) are proxied through to the underlying process.
+
+## Public API
+
+A public API is available at `https://tensors-api.saiden.dev`. Authentication required via `X-API-Key` header.
+
+## TypeScript Client
+
+A TypeScript client is available for the server API:
+
+```bash
+npm install @saiden/tensors
+```
+
+```typescript
+import { Configuration, SearchApi, CivitAIApi } from '@saiden/tensors'
+
+const config = new Configuration({
+  apiKey: 'your-api-key',
+  // basePath defaults to https://tensors-api.saiden.dev
+})
+
+// Unified search
+const search = new SearchApi(config)
+const results = await search.searchModelsApiSearchGet({ query: 'flux' })
+
+// CivitAI specific
+const civitai = new CivitAIApi(config)
+const models = await civitai.searchModelsApiCivitaiSearchGet({ types: 'LORA' })
+```
+
+Repository: [github.com/saiden-dev/tensors-typescript](https://github.com/saiden-dev/tensors-typescript)
 
 ## Development
 
