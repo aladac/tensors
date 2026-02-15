@@ -541,9 +541,7 @@ class TestCivitAISearch:
         """Test search handles network errors."""
         import httpx
 
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            side_effect=httpx.RequestError("Connection failed")
-        )
+        respx_mock.get("https://civitai.com/api/v1/models").mock(side_effect=httpx.RequestError("Connection failed"))
 
         response = civitai_api.get("/api/civitai/search")
         assert response.status_code == 500
@@ -594,9 +592,7 @@ class TestCivitAIGetModel:
         """Test get model handles network errors."""
         import httpx
 
-        respx_mock.get("https://civitai.com/api/v1/models/12345").mock(
-            side_effect=httpx.RequestError("Connection failed")
-        )
+        respx_mock.get("https://civitai.com/api/v1/models/12345").mock(side_effect=httpx.RequestError("Connection failed"))
 
         response = civitai_api.get("/api/civitai/model/12345")
         assert response.status_code == 500
@@ -1125,9 +1121,7 @@ class TestDownloadEndpoints:
             )
         )
 
-        response = download_api.post(
-            "/api/download", json={"version_id": 333, "output_dir": str(custom_dir)}
-        )
+        response = download_api.post("/api/download", json={"version_id": 333, "output_dir": str(custom_dir)})
         assert response.status_code == 200
         assert str(custom_dir) in response.json()["destination"]
 
@@ -1369,9 +1363,7 @@ class TestDownloadBackgroundTasks:
         download_routes._active_downloads[download_id] = {"id": download_id, "status": "queued"}
 
         # Mock download to return failure
-        monkeypatch.setattr(
-            download_routes, "download_model_with_progress", lambda *args, **kwargs: False
-        )
+        monkeypatch.setattr(download_routes, "download_model_with_progress", lambda *args, **kwargs: False)
 
         dest_path = tmp_path / "model.safetensors"
         _do_download(12345, dest_path, None, download_id)
@@ -1580,9 +1572,7 @@ class TestDbFileLookup:
 
         # Mock CivitAI hash lookup to return a match
         respx_mock.get(f"https://civitai.com/api/v1/model-versions/by-hash/{sha256.upper()}").mock(
-            return_value=respx.MockResponse(
-                200, json={"id": 12345, "modelId": 67890, "name": "Found Model"}
-            )
+            return_value=respx.MockResponse(200, json={"id": 12345, "modelId": 67890, "name": "Found Model"})
         )
 
         response = db_api.post("/api/db/link")

@@ -115,9 +115,7 @@ def get_hf_model(
         # Get safetensor files
         siblings = getattr(model, "siblings", None) or []
         safetensor_files = [
-            {"rfilename": s.rfilename, "size": getattr(s, "size", None)}
-            for s in siblings
-            if s.rfilename.endswith(".safetensors")
+            {"rfilename": s.rfilename, "size": getattr(s, "size", None)} for s in siblings if s.rfilename.endswith(".safetensors")
         ]
         model_dict["_safetensor_files"] = safetensor_files
 
