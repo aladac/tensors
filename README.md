@@ -92,6 +92,30 @@ tsr dl -H ABC123...
 tsr dl -m 12345 -o ./models
 ```
 
+### Hugging Face Integration
+
+Search and download safetensor files from Hugging Face Hub.
+
+```bash
+# Search for models with safetensor files
+tsr hf search "flux"
+
+# Filter by author or pipeline
+tsr hf search -a stabilityai -p text-to-image
+
+# Get model info and list safetensor files
+tsr hf get black-forest-labs/FLUX.1-schnell
+
+# List safetensor files only
+tsr hf files black-forest-labs/FLUX.1-schnell
+
+# Download a specific safetensor file
+tsr hf dl black-forest-labs/FLUX.1-schnell -f ae.safetensors
+
+# Download all safetensor files from a model
+tsr hf dl author/model --all -o ./models
+```
+
 ### Inspect Local Files
 
 ```bash
@@ -292,6 +316,18 @@ Data is stored in XDG-compliant paths:
 | `--sfw` | Exclude NSFW content |
 | `--commercial` | none, image, rent, sell |
 | `--page` | Page number for pagination |
+
+## Hugging Face Options
+
+| Option | Description |
+|--------|-------------|
+| `-a, --author` | Filter by author/organization |
+| `-p, --pipeline` | Pipeline tag (text-to-image, text-generation, etc.) |
+| `-s, --sort` | Sort by (downloads, likes, created_at, trending_score) |
+| `-n, --limit` | Number of results (default: 25) |
+| `-f, --file` | Specific file to download |
+| `--all` | Download all safetensor files |
+| `-o, --output` | Output directory |
 
 ## Generate Options
 

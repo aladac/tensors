@@ -10,6 +10,7 @@ dependencies = [
     "rich>=13.0.0",
     "typer>=0.15.0",
     "websocket-client>=1.9.0",
+    "huggingface_hub>=0.25.0",
 ]
 
 [project.optional-dependencies]
@@ -96,6 +97,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["scalar_fastapi.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["huggingface_hub.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

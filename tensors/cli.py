@@ -37,9 +37,18 @@ from tensors.display import (
     _format_size,
     display_civitai_data,
     display_file_info,
+    display_hf_model_info,
+    display_hf_search_results,
     display_local_metadata,
     display_model_info,
     display_search_results,
+)
+from tensors.hf import (
+    download_all_safetensors,
+    download_hf_safetensor,
+    get_hf_model,
+    list_safetensor_files,
+    search_hf_models,
 )
 from tensors.safetensor import compute_sha256, get_base_name, read_safetensor_metadata
 
@@ -720,6 +729,124 @@ def db_stats(
     console.print(table)
 
 
+# =============================================================================
+# Hugging Face Commands
+# =============================================================================
+
+hf_app = typer.Typer(name="hf", help="Hugging Face Hub commands for safetensor files.")
+app.add_typer(hf_app)
+
+
+@hf_app.command("search")
+def hf_search(
+    query: Annotated[str | None, typer.Argument(help="Search query")] = None,
+    author: Annotated[str | None, typer.Option("-a", "--author", help="Filter by author/org")] = None,
+    pipeline: Annotated[str | None, typer.Option("-p", "--pipeline", help="Pipeline tag (text-to-image, etc.)")] = None,
+    sort: Annotated[str | None, typer.Option("-s", "--sort", help="Sort by (downloads, likes, created_at)")] = None,
+    limit: Annotated[int, typer.Option("-n", "--limit", help="Max results")] = 25,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """Search Hugging Face for models with safetensor files."""
+    results = search_hf_models(
+        query=query,
+        author=author,
+        pipeline_tag=pipeline,
+        sort=sort,
+        limit=limit,
+        console=console,
+    )
+
+    if json_output:
+        console.print_json(data=results)
+        return
+
+    display_hf_search_results(results, console)
+
+
+@hf_app.command("get")
+def hf_get(
+    model_id: Annotated[str, typer.Argument(help="Model ID (e.g., stabilityai/stable-diffusion-xl-base-1.0)")],
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """Get Hugging Face model info and list safetensor files."""
+    model = get_hf_model(model_id, console=console)
+
+    if not model:
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(data=model)
+        return
+
+    display_hf_model_info(model, console)
+
+
+@hf_app.command("files")
+def hf_files(
+    model_id: Annotated[str, typer.Argument(help="Model ID")],
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """List safetensor files in a Hugging Face model."""
+    files = list_safetensor_files(model_id, console=console)
+
+    if json_output:
+        console.print_json(data=files)
+        return
+
+    if not files:
+        console.print("[yellow]No safetensor files found.[/yellow]")
+        return
+
+    console.print(f"[bold]Safetensor files in {model_id}:[/bold]")
+    for i, f in enumerate(files, 1):
+        console.print(f"  {i}. {f}")
+
+
+@hf_app.command("dl")
+def hf_download(
+    model_id: Annotated[str, typer.Argument(help="Model ID (e.g., stabilityai/stable-diffusion-xl-base-1.0)")],
+    filename: Annotated[str | None, typer.Option("-f", "--file", help="Specific file to download")] = None,
+    output: Annotated[Path | None, typer.Option("-o", "--output", help="Output directory")] = None,
+    all_files: Annotated[bool, typer.Option("--all", "-a", help="Download all safetensor files")] = False,
+) -> None:
+    """Download safetensor files from Hugging Face.
+
+    Examples:
+        tsr hf dl stabilityai/stable-diffusion-xl-base-1.0 -f sd_xl_base_1.0.safetensors
+        tsr hf dl author/model --all
+    """
+    output_dir = output or Path.cwd()
+
+    if all_files:
+        downloaded = download_all_safetensors(model_id, output_dir, console=console)
+        if downloaded:
+            console.print(f"[green]Downloaded {len(downloaded)} files[/green]")
+        else:
+            console.print("[red]No files downloaded[/red]")
+            raise typer.Exit(1)
+        return
+
+    if not filename:
+        # List files and prompt or show help
+        files = list_safetensor_files(model_id, console=console)
+        if not files:
+            console.print("[red]No safetensor files found in model[/red]")
+            raise typer.Exit(1)
+
+        if len(files) == 1:
+            filename = files[0]
+            console.print(f"[dim]Downloading only safetensor file: {filename}[/dim]")
+        else:
+            console.print("[yellow]Multiple safetensor files found. Specify one with -f or use --all:[/yellow]")
+            for i, f in enumerate(files, 1):
+                console.print(f"  {i}. {f}")
+            raise typer.Exit(1)
+
+    result = download_hf_safetensor(model_id, filename, output_dir, console=console)
+    if not result:
+        raise typer.Exit(1)
+
+
 def main() -> int:
     """Main entry point."""
     # Handle legacy invocation: tsr <file.safetensors> -> tsr info <file>
@@ -732,6 +859,7 @@ def main() -> int:
         "config",
         "serve",
         "db",
+        "hf",
     )
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         arg = sys.argv[1]

@@ -329,3 +329,135 @@ def display_search_results(results: dict[str, Any], console: Console) -> None:
     total = metadata.get("totalItems", len(items))
     console.print(f"\n[dim]Showing {len(items)} of {total:,} results[/dim]")
     console.print("[dim]Use 'tsr get <id>' to view details or 'tsr dl -m <id>' to download[/dim]")
+
+
+# =============================================================================
+# Hugging Face Display Functions
+# =============================================================================
+
+
+def _format_bytes(size_bytes: int) -> str:
+    """Format size in bytes to human-readable string."""
+    if size_bytes < KB:
+        return f"{size_bytes} B"
+    if size_bytes < KB * KB:
+        return f"{size_bytes / KB:.1f} KB"
+    if size_bytes < KB * KB * KB:
+        return f"{size_bytes / KB / KB:.1f} MB"
+    return f"{size_bytes / KB / KB / KB:.2f} GB"
+
+
+def _build_hf_search_table(console: Console) -> Table:
+    """Build Hugging Face search results table."""
+    id_width = 40
+    dls_width = 8
+    likes_width = 6
+    files_width = 5
+
+    terminal_width = console.size.width
+    fixed_width = id_width + dls_width + likes_width + files_width
+    overhead = 17
+    author_width = max(15, (terminal_width - fixed_width - overhead) // 2)
+
+    table = Table(show_header=True, header_style="bold magenta")
+    table.add_column("Model ID", style="cyan", width=id_width, no_wrap=True, overflow="ellipsis")
+    table.add_column("Author", style="yellow", width=author_width, no_wrap=True, overflow="ellipsis")
+    table.add_column("DLs", justify="right", width=dls_width, no_wrap=True)
+    table.add_column("Likes", justify="right", width=likes_width, no_wrap=True)
+    table.add_column("Files", justify="right", width=files_width, no_wrap=True)
+
+    return table
+
+
+def display_hf_search_results(models: list[dict[str, Any]], console: Console) -> None:
+    """Display Hugging Face search results in a table."""
+    if not models:
+        console.print("[yellow]No results found.[/yellow]")
+        return
+
+    table = _build_hf_search_table(console)
+
+    for model in models:
+        model_id = model.get("id", "N/A")
+        author = model.get("author", model_id.split("/")[0] if "/" in model_id else "N/A")
+        downloads = _format_count(model.get("downloads", 0))
+        likes = _format_count(model.get("likes", 0))
+        safetensor_files = model.get("_safetensor_files", [])
+        files_count = str(len(safetensor_files))
+
+        table.add_row(model_id, author, downloads, likes, files_count)
+
+    console.print()
+    console.print(table)
+    console.print(f"\n[dim]Showing {len(models)} models with safetensor files[/dim]")
+    console.print("[dim]Use 'tsr hf get <model_id>' to view details or 'tsr hf dl <model_id>' to download[/dim]")
+
+
+def _build_hf_model_table(console: Console) -> Table:
+    """Build Hugging Face model info table."""
+    prop_width = 12
+    terminal_width = console.size.width
+    overhead = 7
+    value_width = max(40, terminal_width - prop_width - overhead)
+
+    table = Table(title="Hugging Face Model", show_header=True, header_style="bold magenta")
+    table.add_column("Property", style="cyan", width=prop_width, no_wrap=True)
+    table.add_column("Value", style="green", width=value_width, no_wrap=True, overflow="ellipsis")
+
+    return table
+
+
+def display_hf_model_info(model: dict[str, Any], console: Console) -> None:
+    """Display Hugging Face model information."""
+    if not model:
+        console.print("[yellow]Model not found.[/yellow]")
+        return
+
+    table = _build_hf_model_table(console)
+
+    model_id = model.get("id", "N/A")
+    table.add_row("Model ID", model_id)
+    table.add_row("Author", model.get("author", "N/A"))
+    table.add_row("Downloads", f"{model.get('downloads', 0):,}")
+    table.add_row("Likes", f"{model.get('likes', 0):,}")
+
+    # Handle datetime or string values
+    created = model.get("created_at") or model.get("createdAt")
+    if created:
+        created_str = created.strftime("%Y-%m-%d") if hasattr(created, "strftime") else str(created)[:10]
+        table.add_row("Created", created_str)
+
+    updated = model.get("last_modified") or model.get("lastModified")
+    if updated:
+        updated_str = updated.strftime("%Y-%m-%d") if hasattr(updated, "strftime") else str(updated)[:10]
+        table.add_row("Updated", updated_str)
+
+    tags = model.get("tags", [])
+    if tags:
+        table.add_row("Tags", ", ".join(tags[:MAX_TAGS_DISPLAY]) + ("..." if len(tags) > MAX_TAGS_DISPLAY else ""))
+
+    pipeline = model.get("pipeline_tag")
+    if pipeline:
+        table.add_row("Pipeline", pipeline)
+
+    console.print()
+    console.print(table)
+
+    # Display safetensor files
+    safetensor_files = model.get("_safetensor_files", [])
+    if safetensor_files:
+        files_table = Table(title="Safetensor Files", show_header=True, header_style="bold magenta")
+        files_table.add_column("#", style="dim", width=3, justify="right")
+        files_table.add_column("Filename", style="cyan", no_wrap=True, overflow="ellipsis")
+        files_table.add_column("Size", style="green", justify="right", width=10)
+
+        for i, f in enumerate(safetensor_files, 1):
+            filename = f.get("rfilename", "N/A")
+            size = _format_bytes(f.get("size", 0)) if f.get("size") else "N/A"
+            files_table.add_row(str(i), filename, size)
+
+        console.print()
+        console.print(files_table)
+
+    console.print()
+    console.print(f"[bold blue]View on HuggingFace:[/bold blue] https://huggingface.co/{model_id}")
