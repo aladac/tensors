@@ -41,6 +41,14 @@ CIVITAI_DOWNLOAD_BASE = "https://civitai.com/api/download/models"
 # ============================================================================
 
 
+class Provider(str, Enum):
+    """Model search providers."""
+
+    civitai = "civitai"
+    hf = "hf"
+    all = "all"
+
+
 class ModelType(str, Enum):
     """CivitAI model types."""
 

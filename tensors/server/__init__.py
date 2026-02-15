@@ -14,6 +14,7 @@ from tensors.server.civitai_routes import create_civitai_router
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
 from tensors.server.gallery_routes import create_gallery_router
+from tensors.server.search_routes import create_search_router
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     # Protected routers (auth required if configured)
     from tensors.server.auth import verify_api_key  # noqa: PLC0415
 
+    app.include_router(create_search_router(), dependencies=[Depends(verify_api_key)])
     app.include_router(create_civitai_router(), dependencies=[Depends(verify_api_key)])
     app.include_router(create_db_router(), dependencies=[Depends(verify_api_key)])
     app.include_router(create_gallery_router(), dependencies=[Depends(verify_api_key)])

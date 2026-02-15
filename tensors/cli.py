@@ -26,6 +26,7 @@ from tensors.config import (
     ModelType,
     NsfwLevel,
     Period,
+    Provider,
     SortOrder,
     get_default_output_path,
     load_api_key,
@@ -208,62 +209,103 @@ def _save_metadata(
 @app.command()
 def search(
     query: Annotated[str | None, typer.Argument(help="Search query (optional)")] = None,
-    model_type: Annotated[ModelType | None, typer.Option("-t", "--type", help="Model type filter")] = None,
-    base: Annotated[BaseModel | None, typer.Option("-b", "--base", help="Base model filter")] = None,
+    provider: Annotated[Provider, typer.Option("--provider", "-P", help="Search provider")] = Provider.all,
+    model_type: Annotated[ModelType | None, typer.Option("-t", "--type", help="Model type filter (CivitAI)")] = None,
+    base: Annotated[BaseModel | None, typer.Option("-b", "--base", help="Base model filter (CivitAI)")] = None,
     sort: Annotated[SortOrder, typer.Option("-s", "--sort", help="Sort order")] = SortOrder.downloads,
-    limit: Annotated[int, typer.Option("-n", "--limit", help="Max results")] = 20,
-    period: Annotated[Period | None, typer.Option("-p", "--period", help="Time period")] = None,
+    limit: Annotated[int, typer.Option("-n", "--limit", help="Max results per provider")] = 20,
+    period: Annotated[Period | None, typer.Option("-p", "--period", help="Time period (CivitAI)")] = None,
     tag: Annotated[str | None, typer.Option("--tag", help="Filter by tag")] = None,
-    username: Annotated[str | None, typer.Option("-u", "--user", help="Filter by creator")] = None,
-    page: Annotated[int | None, typer.Option("--page", help="Page number")] = None,
-    nsfw: Annotated[NsfwLevel | None, typer.Option("--nsfw", help="NSFW filter level")] = None,
-    sfw: Annotated[bool, typer.Option("--sfw", help="Exclude NSFW content")] = False,
-    commercial: Annotated[CommercialUse | None, typer.Option("--commercial", help="Commercial use filter")] = None,
+    username: Annotated[str | None, typer.Option("-u", "--user", "-a", "--author", help="Filter by creator/author")] = None,
+    page: Annotated[int | None, typer.Option("--page", help="Page number (CivitAI)")] = None,
+    nsfw: Annotated[NsfwLevel | None, typer.Option("--nsfw", help="NSFW filter level (CivitAI)")] = None,
+    sfw: Annotated[bool, typer.Option("--sfw", help="Exclude NSFW content (CivitAI)")] = False,
+    commercial: Annotated[CommercialUse | None, typer.Option("--commercial", help="Commercial use filter (CivitAI)")] = None,
+    pipeline: Annotated[str | None, typer.Option("--pipeline", help="Pipeline tag (HuggingFace)")] = None,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
     api_key: Annotated[str | None, typer.Option("--api-key", help="CivitAI API key")] = None,
 ) -> None:
-    """Search CivitAI models.
+    """Search models on CivitAI and/or Hugging Face.
 
     Examples:
-        tsr search "anime"                    # Search by name
-        tsr search -t lora -b pony            # LoRAs for Pony
-        tsr search --tag anime -b illustrious # Tag + base model
-        tsr search -u "username"              # By creator
-        tsr search -p week -s newest          # New this week
-        tsr search --sfw                      # Exclude NSFW
+        tsr search "flux"                     # Search both providers
+        tsr search "anime" -P civitai         # CivitAI only
+        tsr search "llama" -P hf              # Hugging Face only
+        tsr search -t lora -b pony            # CivitAI LoRAs for Pony
+        tsr search -a stabilityai -P hf       # HF by author
+        tsr search --sfw -P civitai           # CivitAI SFW only
     """
     key = api_key or load_api_key()
+    civitai_results: dict[str, Any] | None = None
+    hf_results: list[dict[str, Any]] | None = None
 
-    # Handle SFW flag
-    nsfw_filter: NsfwLevel | bool | None = NsfwLevel.none if sfw else nsfw
+    # Search CivitAI
+    if provider in (Provider.civitai, Provider.all):
+        nsfw_filter: NsfwLevel | bool | None = NsfwLevel.none if sfw else nsfw
+        civitai_results = search_civitai(
+            query=query,
+            model_type=model_type,
+            base_model=base,
+            sort=sort,
+            limit=limit,
+            api_key=key,
+            console=console if provider == Provider.civitai else None,
+            period=period,
+            nsfw=nsfw_filter,
+            tag=tag,
+            username=username,
+            page=page,
+            commercial_use=commercial,
+        )
+        if civitai_results:
+            _cache_models_quietly(civitai_results.get("items", []))
 
-    results = search_civitai(
-        query=query,
-        model_type=model_type,
-        base_model=base,
-        sort=sort,
-        limit=limit,
-        api_key=key,
-        console=console,
-        period=period,
-        nsfw=nsfw_filter,
-        tag=tag,
-        username=username,
-        page=page,
-        commercial_use=commercial,
-    )
+    # Search Hugging Face
+    if provider in (Provider.hf, Provider.all):
+        tags = [tag] if tag else None
+        hf_results = search_hf_models(
+            query=query,
+            author=username,
+            tags=tags,
+            pipeline_tag=pipeline,
+            sort="downloads" if sort == SortOrder.downloads else "likes" if sort == SortOrder.rating else "created_at",
+            limit=limit,
+            console=console if provider == Provider.hf else None,
+        )
 
-    if not results:
-        console.print("[red]Search failed.[/red]")
-        raise typer.Exit(1)
-
-    # Auto-cache search results
-    _cache_models_quietly(results.get("items", []))
-
+    # Output results
     if json_output:
-        console.print_json(data=results)
+        output: dict[str, Any] = {}
+        if civitai_results:
+            output["civitai"] = civitai_results
+        if hf_results:
+            output["huggingface"] = hf_results
+        console.print_json(data=output)
+        return
+
+    # Display based on provider
+    if provider == Provider.civitai:
+        if not civitai_results:
+            console.print("[red]CivitAI search failed.[/red]")
+            raise typer.Exit(1)
+        display_search_results(civitai_results, console)
+    elif provider == Provider.hf:
+        if hf_results is None:
+            console.print("[red]Hugging Face search failed.[/red]")
+            raise typer.Exit(1)
+        display_hf_search_results(hf_results, console)
     else:
-        display_search_results(results, console)
+        # Both providers
+        if civitai_results and civitai_results.get("items"):
+            console.print("\n[bold cyan]═══ CivitAI Results ═══[/bold cyan]")
+            display_search_results(civitai_results, console)
+
+        if hf_results:
+            console.print("\n[bold cyan]═══ Hugging Face Results ═══[/bold cyan]")
+            display_hf_search_results(hf_results, console)
+
+        if not (civitai_results and civitai_results.get("items")) and not hf_results:
+            console.print("[yellow]No results found on either provider.[/yellow]")
 
 
 @app.command()
@@ -735,32 +777,6 @@ def db_stats(
 
 hf_app = typer.Typer(name="hf", help="Hugging Face Hub commands for safetensor files.")
 app.add_typer(hf_app)
-
-
-@hf_app.command("search")
-def hf_search(
-    query: Annotated[str | None, typer.Argument(help="Search query")] = None,
-    author: Annotated[str | None, typer.Option("-a", "--author", help="Filter by author/org")] = None,
-    pipeline: Annotated[str | None, typer.Option("-p", "--pipeline", help="Pipeline tag (text-to-image, etc.)")] = None,
-    sort: Annotated[str | None, typer.Option("-s", "--sort", help="Sort by (downloads, likes, created_at)")] = None,
-    limit: Annotated[int, typer.Option("-n", "--limit", help="Max results")] = 25,
-    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
-) -> None:
-    """Search Hugging Face for models with safetensor files."""
-    results = search_hf_models(
-        query=query,
-        author=author,
-        pipeline_tag=pipeline,
-        sort=sort,
-        limit=limit,
-        console=console,
-    )
-
-    if json_output:
-        console.print_json(data=results)
-        return
-
-    display_hf_search_results(results, console)
 
 
 @hf_app.command("get")
