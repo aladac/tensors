@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from tensors.server.civitai_routes import create_civitai_router
+from tensors.server.comfy_routes import create_comfy_router
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
 from tensors.server.gallery_routes import create_gallery_router
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(create_civitai_router())
+    app.include_router(create_comfy_router())
     app.include_router(create_db_router())
     app.include_router(create_gallery_router())
     app.include_router(create_download_router())

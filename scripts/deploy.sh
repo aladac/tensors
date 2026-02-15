@@ -5,7 +5,7 @@
 set -e
 
 REMOTE="chi@junkpile"
-REMOTE_DIR="~/Projects/tensors"
+REMOTE_DIR="/opt/tensors/app"
 LOCAL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "==> Building UI..."
@@ -23,7 +23,12 @@ rsync -av --delete \
   --exclude='.mypy_cache' \
   --exclude='.pytest_cache' \
   --exclude='*.egg-info' \
+  --rsync-path="sudo rsync" \
   "$LOCAL_DIR/tensors/" "$REMOTE:$REMOTE_DIR/tensors/"
+
+echo ""
+echo "==> Fixing permissions..."
+ssh "$REMOTE" "sudo chown -R tensors:tensors $REMOTE_DIR && sudo chmod -R g+w $REMOTE_DIR"
 
 echo ""
 echo "==> Restarting tensors service..."
@@ -34,39 +39,16 @@ echo "==> Waiting for tensors to start..."
 sleep 2
 
 echo ""
-echo "==> Verifying tensors API..."
-TENSORS_STATUS=$(ssh "$REMOTE" "curl -s localhost:8081/api/models/status" 2>/dev/null)
-if echo "$TENSORS_STATUS" | grep -q '"active":true'; then
-  echo "✓ tensors API responding"
-  echo "  Current model: $(echo "$TENSORS_STATUS" | jq -r '.current_model' | xargs basename)"
+echo "==> Verifying tensors service..."
+SERVICE_STATUS=$(ssh "$REMOTE" "systemctl is-active tensors" 2>/dev/null)
+if [ "$SERVICE_STATUS" = "active" ]; then
+  echo "✓ tensors service running"
 else
-  echo "✗ tensors API not responding"
-  echo "$TENSORS_STATUS"
-  exit 1
-fi
-
-echo ""
-echo "==> Verifying sd-server..."
-SD_STATUS=$(ssh "$REMOTE" "curl -s localhost:1234/sdapi/v1/sd-models" 2>/dev/null)
-if echo "$SD_STATUS" | grep -q 'model_name'; then
-  echo "✓ sd-server responding"
-  echo "  Models available: $(echo "$SD_STATUS" | jq length)"
-else
-  echo "✗ sd-server not responding"
-  exit 1
-fi
-
-echo ""
-echo "==> Verifying external access..."
-EXT_STATUS=$(curl -s -H "X-API-Key: v00YKDdHzLmwTLUJ07iMn4umLvcsKa9i" https://sd-api.saiden.dev/sdapi/v1/sd-models 2>/dev/null)
-if echo "$EXT_STATUS" | grep -q 'model_name'; then
-  echo "✓ sd-api.saiden.dev responding"
-else
-  echo "✗ sd-api.saiden.dev not responding"
+  echo "✗ tensors service not running"
+  ssh "$REMOTE" "journalctl -u tensors -n 10 --no-pager"
   exit 1
 fi
 
 echo ""
 echo "==> Deploy complete!"
-echo "    UI: https://tensors.saiden.dev"
-echo "    API: https://sd-api.saiden.dev"
+echo "    Access: http://junkpile:8081"

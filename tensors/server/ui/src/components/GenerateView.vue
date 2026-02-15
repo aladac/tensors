@@ -74,7 +74,7 @@ async function generate() {
   // Build final prompt with quality tags
   const finalPrompt = `${store.defaultQualityTags}, ${currentPrompt}`
 
-  // Get LoRA config if selected (sd-server expects LoRA as separate param with filename, not in prompt)
+  // Get LoRA config if selected
   const selectedLoraModel = store.selectedLora ? store.loras.find(l => l.path === store.selectedLora) : null
   const loraConfig = selectedLoraModel ? { path: selectedLoraModel.filename, multiplier: store.loraWeight } : undefined
 
@@ -124,7 +124,7 @@ async function generate() {
       <v-card class="pa-6 text-center" min-width="300">
         <v-progress-circular indeterminate color="primary" size="48" class="mb-4" />
         <div class="text-h6">{{ store.switchMessage || 'Switching model...' }}</div>
-        <div class="text-caption text-grey mt-2">sd-server is restarting</div>
+        <div class="text-caption text-grey mt-2">Model will load on next generation</div>
       </v-card>
     </v-overlay>
 
