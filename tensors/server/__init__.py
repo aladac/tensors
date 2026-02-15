@@ -12,6 +12,7 @@ from scalar_fastapi import get_scalar_api_reference
 
 from tensors.config import get_server_api_key
 from tensors.server.civitai_routes import create_civitai_router
+from tensors.server.comfyui_routes import create_comfyui_router
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
 from tensors.server.gallery_routes import create_gallery_router
@@ -69,7 +70,10 @@ def create_app() -> FastAPI:
             title="tensors API",
         )
 
-    # Protected routers (auth required if configured)
+    # ComfyUI proxy (handles its own session auth)
+    app.include_router(create_comfyui_router())
+
+    # Protected routers (API key auth)
     from tensors.server.auth import verify_api_key  # noqa: PLC0415
 
     app.include_router(create_search_router(), dependencies=[Depends(verify_api_key)])
