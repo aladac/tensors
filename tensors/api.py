@@ -233,7 +233,7 @@ def search_civitai(
     sort: SortOrder,
     limit: int,
     api_key: str | None,
-    console: Console,
+    console: Console | None = None,
     *,
     period: Period | None = None,
     nsfw: NsfwLevel | bool | None = None,
@@ -249,6 +249,9 @@ def search_civitai(
     Implements workarounds for API limitations:
     - Query + filters: fetches more results and filters client-side
     - NSFW: defaults to including all content (like website behavior)
+
+    Args:
+        console: Rich console for progress display. If None, runs without progress spinner.
     """
     params, has_filters = _build_search_params(
         query,
@@ -267,25 +270,32 @@ def search_civitai(
     )
     url = f"{CIVITAI_API_BASE}/models"
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        transient=True,
-    ) as progress:
-        progress.add_task("[cyan]Searching CivitAI...", total=None)
-
+    def _do_search() -> dict[str, Any] | None:
         try:
             response = httpx.get(url, params=params, headers=_get_headers(api_key), timeout=30.0)
             response.raise_for_status()
             result: dict[str, Any] = response.json()
             return _filter_results(result, query, has_filters, limit)
         except httpx.HTTPStatusError as e:
-            console.print(f"[red]API error: {e.response.status_code}[/red]")
+            if console:
+                console.print(f"[red]API error: {e.response.status_code}[/red]")
             return None
         except httpx.RequestError as e:
-            console.print(f"[red]Request error: {e}[/red]")
+            if console:
+                console.print(f"[red]Request error: {e}[/red]")
             return None
+
+    if console:
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task("[cyan]Searching CivitAI...", total=None)
+            return _do_search()
+    else:
+        return _do_search()
 
 
 def _setup_resume(dest_path: Path, resume: bool, console: Console) -> tuple[dict[str, str], str, int]:
