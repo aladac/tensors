@@ -298,6 +298,11 @@ async def proxy_comfyui(request: Request, path: str, comfy_session: str | None =
     excluded_headers = {"content-encoding", "content-length", "transfer-encoding", "connection"}
     response_headers = {k: v for k, v in response.headers.items() if k.lower() not in excluded_headers}
 
+    # Add CORS headers for cross-origin requests
+    response_headers["Access-Control-Allow-Origin"] = "*"
+    response_headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+    response_headers["Access-Control-Allow-Headers"] = "*"
+
     return Response(
         content=response.content,
         status_code=response.status_code,
