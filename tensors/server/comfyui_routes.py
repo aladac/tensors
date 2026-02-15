@@ -1,4 +1,4 @@
-"""ComfyUI reverse proxy with session authentication."""
+"""ComfyUI reverse proxy with GitHub OAuth authentication."""
 
 from __future__ import annotations
 
@@ -6,11 +6,12 @@ import asyncio
 import hashlib
 import hmac
 import os
+import secrets
 import time
 
 import httpx
 import websockets
-from fastapi import APIRouter, Cookie, Form, HTTPException, Request, Response, WebSocket, status
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response, WebSocket, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 router = APIRouter(tags=["ComfyUI"])
@@ -20,10 +21,16 @@ _SESSION_TOKEN_PARTS = 3
 
 # Config from environment
 COMFYUI_URL = os.environ.get("COMFYUI_URL", "http://127.0.0.1:8188")
-COMFYUI_USER = os.environ.get("COMFYUI_USER", "")
-COMFYUI_PASS = os.environ.get("COMFYUI_PASS", "")
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "tensors-comfyui-secret-change-me")
 SESSION_MAX_AGE = 86400 * 7  # 7 days
+
+# GitHub OAuth config
+GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
+GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
+GITHUB_ALLOWED_USERS = os.environ.get("GITHUB_ALLOWED_USERS", "").split(",")
+
+# OAuth state storage (in-memory, short-lived)
+_oauth_states: dict[str, float] = {}
 
 
 def _create_session_token(username: str) -> str:
@@ -51,6 +58,11 @@ def _verify_session_token(token: str | None) -> bool:
         return hmac.compare_digest(signature, expected)
     except (ValueError, TypeError):
         return False
+
+
+def _is_auth_configured() -> bool:
+    """Check if GitHub OAuth is configured."""
+    return bool(GITHUB_CLIENT_ID and GITHUB_CLIENT_SECRET)
 
 
 LOGIN_PAGE_HTML = """
@@ -101,52 +113,35 @@ LOGIN_PAGE_HTML = """
             font-size: 14px;
             margin-top: 8px;
         }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            font-size: 14px;
-            font-weight: 500;
-            margin-bottom: 8px;
-            color: #b0b0b0;
-        }
-        input {
-            width: 100%;
-            padding: 14px 16px;
-            font-size: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            background: rgba(0, 0, 0, 0.3);
-            color: #fff;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
-        }
-        input::placeholder {
-            color: #666;
-        }
-        button {
+        .github-btn {
             width: 100%;
             padding: 14px;
             font-size: 16px;
             font-weight: 600;
             border: none;
             border-radius: 8px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #24292f;
             color: #fff;
             cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            text-decoration: none;
         }
-        button:hover {
+        .github-btn:hover {
+            background: #32383f;
             transform: translateY(-2px);
-            box-shadow: 0 10px 20px -10px rgba(102, 126, 234, 0.5);
+            box-shadow: 0 10px 20px -10px rgba(0, 0, 0, 0.5);
         }
-        button:active {
+        .github-btn:active {
             transform: translateY(0);
+        }
+        .github-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
         }
         .error {
             background: rgba(239, 68, 68, 0.1);
@@ -172,17 +167,12 @@ LOGIN_PAGE_HTML = """
             <p>Stable Diffusion GUI</p>
         </div>
         {{ERROR}}
-        <form method="POST" action="/comfy/login">
-            <div class="form-group">
-                <label for="username">Username</label>
-                <input type="text" id="username" name="username" placeholder="Enter username" required autofocus>
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" placeholder="Enter password" required>
-            </div>
-            <button type="submit">Sign In</button>
-        </form>
+        <a href="/comfy/auth/github" class="github-btn">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            Sign in with GitHub
+        </a>
         <div class="footer">
             Powered by tensors
         </div>
@@ -202,31 +192,119 @@ async def login_page(error: str | None = None) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@router.post("/comfy/login")
-async def login_submit(username: str = Form(...), password: str = Form(...)) -> Response:
-    """Handle login form submission."""
-    if not COMFYUI_USER or not COMFYUI_PASS:
+@router.get("/comfy/auth/github")
+async def github_auth(request: Request) -> Response:
+    """Redirect to GitHub OAuth."""
+    if not _is_auth_configured():
         return RedirectResponse(
-            url="/comfy/login?error=Authentication+not+configured",
+            url="/comfy/login?error=GitHub+OAuth+not+configured",
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    if username == COMFYUI_USER and password == COMFYUI_PASS:
-        token = _create_session_token(username)
-        response = RedirectResponse(url="/comfy/", status_code=status.HTTP_303_SEE_OTHER)
-        response.set_cookie(
-            key="comfy_session",
-            value=token,
-            max_age=SESSION_MAX_AGE,
-            httponly=True,
-            samesite="lax",
-        )
-        return response
+    # Generate state for CSRF protection
+    state = secrets.token_urlsafe(32)
+    _oauth_states[state] = time.time()
 
+    # Clean up old states (older than 10 minutes)
+    cutoff = time.time() - 600
+    for s in list(_oauth_states.keys()):
+        if _oauth_states[s] < cutoff:
+            del _oauth_states[s]
+
+    # Build GitHub OAuth URL
+    params = {
+        "client_id": GITHUB_CLIENT_ID,
+        "redirect_uri": str(request.url_for("github_callback")),
+        "scope": "read:user",
+        "state": state,
+    }
+    query = "&".join(f"{k}={v}" for k, v in params.items())
     return RedirectResponse(
-        url="/comfy/login?error=Invalid+username+or+password",
+        url=f"https://github.com/login/oauth/authorize?{query}",
         status_code=status.HTTP_303_SEE_OTHER,
     )
+
+
+@router.get("/comfy/auth/callback")
+async def github_callback(request: Request, code: str | None = None, state: str | None = None) -> Response:
+    """Handle GitHub OAuth callback."""
+    # Verify state
+    if not state or state not in _oauth_states:
+        return RedirectResponse(
+            url="/comfy/login?error=Invalid+OAuth+state",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+    del _oauth_states[state]
+
+    if not code:
+        return RedirectResponse(
+            url="/comfy/login?error=No+authorization+code",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    # Exchange code for access token
+    async with httpx.AsyncClient() as client:
+        token_response = await client.post(
+            "https://github.com/login/oauth/access_token",
+            data={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code,
+            },
+            headers={"Accept": "application/json"},
+        )
+        token_data = token_response.json()
+
+    if "error" in token_data:
+        return RedirectResponse(
+            url=f"/comfy/login?error={token_data.get('error_description', 'OAuth+error')}",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    access_token = token_data.get("access_token")
+    if not access_token:
+        return RedirectResponse(
+            url="/comfy/login?error=No+access+token",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    # Get user info
+    async with httpx.AsyncClient() as client:
+        user_response = await client.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"Bearer {access_token}",
+                "Accept": "application/vnd.github+json",
+            },
+        )
+        user_data = user_response.json()
+
+    username = user_data.get("login", "")
+    if not username:
+        return RedirectResponse(
+            url="/comfy/login?error=Could+not+get+GitHub+username",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    # Check if user is allowed
+    allowed = [u.strip().lower() for u in GITHUB_ALLOWED_USERS if u.strip()]
+    if allowed and username.lower() not in allowed:
+        return RedirectResponse(
+            url="/comfy/login?error=User+not+authorized",
+            status_code=status.HTTP_303_SEE_OTHER,
+        )
+
+    # Create session
+    token = _create_session_token(username)
+    response = RedirectResponse(url="/comfy/", status_code=status.HTTP_303_SEE_OTHER)
+    response.set_cookie(
+        key="comfy_session",
+        value=token,
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/comfy/logout")
@@ -244,7 +322,7 @@ def _check_auth(comfy_session: str | None, path: str = "", method: str = "GET") 
     because modulepreload/crossorigin requests don't send cookies.
     OPTIONS requests (CORS preflight) are also allowed without auth.
     """
-    if not COMFYUI_USER:
+    if not _is_auth_configured():
         return
 
     if method == "OPTIONS":
@@ -313,7 +391,7 @@ async def proxy_comfyui(request: Request, path: str, comfy_session: str | None =
 async def proxy_websocket(websocket: WebSocket, comfy_session: str | None = Cookie(default=None)) -> None:
     """Proxy WebSocket connections to ComfyUI."""
     # Check auth via cookie
-    if COMFYUI_USER and not _verify_session_token(comfy_session):
+    if _is_auth_configured() and not _verify_session_token(comfy_session):
         await websocket.close(code=4001, reason="Unauthorized")
         return
 
