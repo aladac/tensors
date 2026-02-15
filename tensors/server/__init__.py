@@ -6,9 +6,10 @@ import logging
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from scalar_fastapi import get_scalar_api_reference
 
+from tensors.config import get_server_api_key
 from tensors.server.civitai_routes import create_civitai_router
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
@@ -29,7 +30,11 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        logger.info("Tensors server starting")
+        api_key = get_server_api_key()
+        if api_key:
+            logger.info("Tensors server starting (auth enabled)")
+        else:
+            logger.info("Tensors server starting (no auth)")
         yield
 
     app = FastAPI(
@@ -41,6 +46,7 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
 
+    # Public endpoints (no auth)
     @app.get("/status")
     async def status() -> dict[str, str]:
         return {"status": "ok"}
@@ -52,10 +58,13 @@ def create_app() -> FastAPI:
             title="tensors API",
         )
 
-    app.include_router(create_civitai_router())
-    app.include_router(create_db_router())
-    app.include_router(create_gallery_router())
-    app.include_router(create_download_router())
+    # Protected routers (auth required if configured)
+    from tensors.server.auth import verify_api_key  # noqa: PLC0415
+
+    app.include_router(create_civitai_router(), dependencies=[Depends(verify_api_key)])
+    app.include_router(create_db_router(), dependencies=[Depends(verify_api_key)])
+    app.include_router(create_gallery_router(), dependencies=[Depends(verify_api_key)])
+    app.include_router(create_download_router(), dependencies=[Depends(verify_api_key)])
     return app
 
 

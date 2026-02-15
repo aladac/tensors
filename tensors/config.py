@@ -396,3 +396,32 @@ def get_sd_server_api_key() -> str | None:
             return str(key)
 
     return None
+
+
+# ============================================================================
+# Tensors Server API Key
+# ============================================================================
+
+
+def get_server_api_key() -> str | None:
+    """Get the tensors server API key for authentication.
+
+    Resolution order:
+    1. TENSORS_API_KEY environment variable
+    2. config.toml [server].api_key
+    3. None (no authentication required)
+    """
+    # Check environment variable first
+    env_key = os.environ.get("TENSORS_API_KEY")
+    if env_key:
+        return env_key
+
+    # Check config file
+    config = load_config()
+    server_config = config.get("server", {})
+    if isinstance(server_config, dict):
+        key = server_config.get("api_key")
+        if key:
+            return str(key)
+
+    return None
