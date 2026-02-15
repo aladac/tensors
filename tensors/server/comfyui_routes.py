@@ -244,19 +244,26 @@ def _check_auth(comfy_session: str | None, path: str = "", method: str = "GET") 
     because modulepreload/crossorigin requests don't send cookies.
     OPTIONS requests (CORS preflight) are also allowed without auth.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"_check_auth called: path={path!r}, method={method!r}, has_session={comfy_session is not None}")
+
     if not COMFYUI_USER:
-        # Auth not configured, allow access
+        logger.info("Auth not configured, allowing")
         return
 
     # Allow CORS preflight requests (they don't send cookies)
     if method == "OPTIONS":
+        logger.info("OPTIONS request, allowing")
         return
 
     # Allow static assets without auth (modulepreload doesn't send cookies)
     if path.startswith("assets/"):
+        logger.info(f"Assets path, allowing: {path}")
         return
 
     if not _verify_session_token(comfy_session):
+        logger.info("Invalid session, redirecting to login")
         raise HTTPException(
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
             headers={"Location": "/comfy/login"},
