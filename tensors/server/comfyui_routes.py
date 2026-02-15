@@ -237,11 +237,21 @@ async def logout() -> Response:
     return response
 
 
-def _check_auth(comfy_session: str | None) -> None:
-    """Check if user is authenticated, raise 401 if not."""
+def _check_auth(comfy_session: str | None, path: str = "") -> None:
+    """Check if user is authenticated, raise redirect if not.
+
+    Static assets (JS, CSS, fonts, images) are allowed without auth
+    because modulepreload/crossorigin requests don't send cookies.
+    """
     if not COMFYUI_USER:
         # Auth not configured, allow access
         return
+
+    # Allow static assets without auth (modulepreload doesn't send cookies)
+    static_extensions = {".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".json"}
+    if any(path.lower().endswith(ext) for ext in static_extensions):
+        return
+
     if not _verify_session_token(comfy_session):
         raise HTTPException(
             status_code=status.HTTP_307_TEMPORARY_REDIRECT,
@@ -252,7 +262,7 @@ def _check_auth(comfy_session: str | None) -> None:
 @router.api_route("/comfy/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
 async def proxy_comfyui(request: Request, path: str, comfy_session: str | None = Cookie(default=None)) -> Response:
     """Proxy all HTTP requests to ComfyUI."""
-    _check_auth(comfy_session)
+    _check_auth(comfy_session, path)
 
     # Build target URL
     target_url = f"{COMFYUI_URL}/{path}"
