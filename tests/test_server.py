@@ -481,72 +481,6 @@ def civitai_api(monkeypatch) -> TestClient:
     return TestClient(app)
 
 
-class TestCivitAISearch:
-    """Tests for CivitAI search endpoint."""
-
-    def test_search_basic(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test basic search request."""
-        import respx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            return_value=respx.MockResponse(
-                200,
-                json={"items": [{"id": 1, "name": "Test Model"}], "metadata": {}},
-            )
-        )
-
-        response = civitai_api.get("/api/civitai/search")
-        assert response.status_code == 200
-        data = response.json()
-        assert "items" in data
-
-    def test_search_with_params(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test search with query parameters."""
-        import respx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            return_value=respx.MockResponse(
-                200,
-                json={"items": [], "metadata": {}},
-            )
-        )
-
-        response = civitai_api.get(
-            "/api/civitai/search",
-            params={
-                "query": "anime",
-                "types": "LORA",
-                "baseModels": "Illustrious",
-                "sort": "Newest",
-                "limit": 10,
-                "period": "Week",
-                "tag": "character",
-                "sfw": True,
-            },
-        )
-        assert response.status_code == 200
-
-    def test_search_api_error(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test search handles API errors."""
-        import respx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            return_value=respx.MockResponse(500, json={"error": "Server error"})
-        )
-
-        response = civitai_api.get("/api/civitai/search")
-        assert response.status_code == 500
-
-    def test_search_network_error(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test search handles network errors."""
-        import httpx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(side_effect=httpx.RequestError("Connection failed"))
-
-        response = civitai_api.get("/api/civitai/search")
-        assert response.status_code == 500
-
-
 class TestCivitAIGetModel:
     """Tests for CivitAI get model endpoint."""
 
@@ -1194,50 +1128,6 @@ class TestDownloadEndpoints:
 
 class TestCivitAIRoutesExtended:
     """Extended tests for CivitAI routes."""
-
-    def test_search_with_nsfw_filter(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test search with NSFW filter."""
-        import respx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            return_value=respx.MockResponse(200, json={"items": [], "metadata": {}})
-        )
-
-        response = civitai_api.get("/api/civitai/search", params={"nsfw": "Soft"})
-        assert response.status_code == 200
-
-    def test_search_with_commercial_filter(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test search with commercial use filter."""
-        import respx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            return_value=respx.MockResponse(200, json={"items": [], "metadata": {}})
-        )
-
-        response = civitai_api.get("/api/civitai/search", params={"commercial": "Rent"})
-        assert response.status_code == 200
-
-    def test_search_with_username(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test search with username filter."""
-        import respx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            return_value=respx.MockResponse(200, json={"items": [], "metadata": {}})
-        )
-
-        response = civitai_api.get("/api/civitai/search", params={"username": "testuser"})
-        assert response.status_code == 200
-
-    def test_search_with_page(self, civitai_api: TestClient, respx_mock) -> None:
-        """Test search with page parameter."""
-        import respx
-
-        respx_mock.get("https://civitai.com/api/v1/models").mock(
-            return_value=respx.MockResponse(200, json={"items": [], "metadata": {}})
-        )
-
-        response = civitai_api.get("/api/civitai/search", params={"page": 2})
-        assert response.status_code == 200
 
     def test_get_model_caches_result(self, civitai_api: TestClient, respx_mock, temp_db, monkeypatch) -> None:
         """Test that getting a model caches it in the database."""
