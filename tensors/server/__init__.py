@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
 from tensors.config import get_server_api_key
+from tensors.server.auth_routes import create_auth_router
 from tensors.server.civitai_routes import create_civitai_router
 from tensors.server.comfyui_routes import create_comfyui_router
 from tensors.server.db_routes import create_db_router
@@ -62,6 +63,9 @@ def create_app() -> FastAPI:
             openapi_url=app.openapi_url or "/openapi.json",
             title="tensors API",
         )
+
+    # Shared OAuth auth (no API key required)
+    app.include_router(create_auth_router())
 
     # ComfyUI proxy (handles its own session auth)
     app.include_router(create_comfyui_router())
