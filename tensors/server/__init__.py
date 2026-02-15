@@ -49,11 +49,11 @@ def create_app() -> FastAPI:
         redoc_url=None,
     )
 
-    # CORS - allow all origins
+    # CORS - allow all origins (credentials=False required for wildcard origin)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
