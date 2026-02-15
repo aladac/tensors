@@ -31,7 +31,7 @@ class TestStatus:
 @pytest.fixture
 def temp_gallery(tmp_path):
     """Create a temporary gallery for testing."""
-    from tensors.server.gallery import Gallery  # noqa: PLC0415
+    from tensors.server.gallery import Gallery
 
     gallery_dir = tmp_path / "gallery"
     gallery_dir.mkdir()
@@ -59,11 +59,11 @@ def gallery_with_images(temp_gallery):
 @pytest.fixture
 def gallery_api(temp_gallery) -> TestClient:
     """Test client for gallery API with temp gallery."""
-    from fastapi import FastAPI  # noqa: PLC0415
+    from fastapi import FastAPI
 
     # Override the gallery singleton
-    from tensors.server import gallery_routes  # noqa: PLC0415
-    from tensors.server.gallery_routes import create_gallery_router  # noqa: PLC0415
+    from tensors.server import gallery_routes
+    from tensors.server.gallery_routes import create_gallery_router
 
     gallery_routes._gallery = temp_gallery
 
@@ -85,7 +85,7 @@ class TestGalleryList:
 
     def test_list_images_with_data(self, gallery_api: TestClient, gallery_with_images) -> None:
         """Test listing gallery with images."""
-        from tensors.server import gallery_routes  # noqa: PLC0415
+        from tensors.server import gallery_routes
 
         gallery_routes._gallery = gallery_with_images
 
@@ -97,7 +97,7 @@ class TestGalleryList:
 
     def test_list_images_pagination(self, gallery_api: TestClient, gallery_with_images) -> None:
         """Test pagination parameters."""
-        from tensors.server import gallery_routes  # noqa: PLC0415
+        from tensors.server import gallery_routes
 
         gallery_routes._gallery = gallery_with_images
 
@@ -117,7 +117,7 @@ class TestGalleryGetImage:
 
     def test_get_image_success(self, gallery_api: TestClient, gallery_with_images) -> None:
         """Test getting an image file."""
-        from tensors.server import gallery_routes  # noqa: PLC0415
+        from tensors.server import gallery_routes
 
         gallery_routes._gallery = gallery_with_images
 
@@ -140,7 +140,7 @@ class TestGalleryMetadata:
 
     def test_get_metadata_success(self, gallery_api: TestClient, gallery_with_images) -> None:
         """Test getting image metadata."""
-        from tensors.server import gallery_routes  # noqa: PLC0415
+        from tensors.server import gallery_routes
 
         gallery_routes._gallery = gallery_with_images
 
@@ -156,7 +156,7 @@ class TestGalleryMetadata:
 
     def test_edit_metadata(self, gallery_api: TestClient, gallery_with_images) -> None:
         """Test updating image metadata."""
-        from tensors.server import gallery_routes  # noqa: PLC0415
+        from tensors.server import gallery_routes
 
         gallery_routes._gallery = gallery_with_images
 
@@ -192,7 +192,7 @@ class TestGalleryDelete:
 
     def test_delete_image_success(self, gallery_api: TestClient, gallery_with_images) -> None:
         """Test deleting an image."""
-        from tensors.server import gallery_routes  # noqa: PLC0415
+        from tensors.server import gallery_routes
 
         gallery_routes._gallery = gallery_with_images
 
@@ -227,7 +227,7 @@ class TestGalleryStats:
 @pytest.fixture
 def temp_db(tmp_path):
     """Create a temporary database for testing."""
-    from tensors.db import Database  # noqa: PLC0415
+    from tensors.db import Database
 
     db_path = tmp_path / "test_models.db"
     db = Database(db_path=db_path)
@@ -238,11 +238,11 @@ def temp_db(tmp_path):
 @pytest.fixture
 def db_api(temp_db, monkeypatch) -> TestClient:
     """Test client for db API with temp database."""
-    from fastapi import FastAPI  # noqa: PLC0415
+    from fastapi import FastAPI
 
     # Monkeypatch Database to use temp_db path
-    from tensors import db as db_module  # noqa: PLC0415
-    from tensors.server.db_routes import create_db_router  # noqa: PLC0415
+    from tensors import db as db_module
+    from tensors.server.db_routes import create_db_router
 
     monkeypatch.setattr(db_module, "DB_PATH", temp_db.db_path)
 
@@ -268,7 +268,7 @@ class TestDbEndpoints:
 
     def test_search_models_with_query(self, db_api: TestClient, temp_db, monkeypatch) -> None:
         """Test searching models with query parameters."""
-        from tensors import db as db_module  # noqa: PLC0415
+        from tensors import db as db_module
 
         monkeypatch.setattr(db_module, "DB_PATH", temp_db.db_path)
 
@@ -293,7 +293,7 @@ class TestDbEndpoints:
 
     def test_get_model_success(self, db_api: TestClient, temp_db, monkeypatch) -> None:
         """Test getting cached model."""
-        from tensors import db as db_module  # noqa: PLC0415
+        from tensors import db as db_module
 
         monkeypatch.setattr(db_module, "DB_PATH", temp_db.db_path)
 

@@ -66,7 +66,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["PLR2004", "ARG002", "TC001", "TC003"]
+"tests/**" = ["PLR2004", "ARG001", "ARG002", "ARG005", "TC001", "TC003", "PLC0415", "F841"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tensors"]
