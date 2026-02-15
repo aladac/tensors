@@ -46,6 +46,15 @@ tsr search -t lora -b sdxl
 
 # Sort by newest, limit results
 tsr search -t checkpoint -s newest -n 10
+
+# Filter by tag and period
+tsr search --tag anime -p week -b illustrious
+
+# By creator
+tsr search -u "username"
+
+# SFW only with commercial use filter
+tsr search --sfw --commercial sell
 ```
 
 ### Get Model Info
@@ -240,9 +249,10 @@ local = "http://localhost:51200"
 default_remote = "junkpile"
 ```
 
-Or set API key via environment variable:
+Or set API keys via environment variables:
 ```bash
-export CIVITAI_API_KEY="your-api-key"
+export CIVITAI_API_KEY="your-api-key"      # For CivitAI API access
+export TENSORS_API_KEY="your-server-key"   # For server authentication
 ```
 
 ## Default Paths
@@ -263,9 +273,16 @@ Data is stored in XDG-compliant paths:
 | Option | Values |
 |--------|--------|
 | `-t, --type` | checkpoint, lora, embedding, vae, controlnet, locon |
-| `-b, --base` | sd15, sdxl, pony, flux, illustrious |
+| `-b, --base` | sd14, sd15, sd2, sdxl, pony, flux, illustrious, noobai, auraflow |
 | `-s, --sort` | downloads, rating, newest |
-| `-n, --limit` | Number of results (default: 20) |
+| `-n, --limit` | Number of results (default: 25) |
+| `-p, --period` | all, year, month, week, day |
+| `--tag` | Filter by tag (e.g., "anime") |
+| `-u, --user` | Filter by creator username |
+| `--nsfw` | none, soft, mature, x |
+| `--sfw` | Exclude NSFW content |
+| `--commercial` | none, image, rent, sell |
+| `--page` | Page number for pagination |
 
 ## Generate Options
 
@@ -288,9 +305,16 @@ Data is stored in XDG-compliant paths:
 
 When running `tsr serve`, the following endpoints are available:
 
+**OpenAPI Documentation:** Visit `/docs` for interactive Scalar API documentation.
+
+**Authentication:** If `TENSORS_API_KEY` is set, all endpoints except `/status` and `/docs` require authentication via:
+- Header: `X-API-Key: your-key`
+- Query param: `?api_key=your-key`
+
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/status` | GET | Server status and active model |
+| `/status` | GET | Server status (public) |
+| `/docs` | GET | OpenAPI documentation (public) |
 | `/reload` | POST | Hot-reload with new model |
 | `/api/images` | GET | List gallery images |
 | `/api/images/{id}` | GET | Get image file |

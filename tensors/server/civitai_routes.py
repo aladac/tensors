@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from enum import Enum
+from typing import Annotated, Any
 
 import httpx
 from fastapi import APIRouter, Query, Response
@@ -17,6 +18,42 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/civitai", tags=["CivitAI"])
 
 
+class SortOrder(str, Enum):
+    """Sort order options for CivitAI search."""
+
+    most_downloaded = "Most Downloaded"
+    highest_rated = "Highest Rated"
+    newest = "Newest"
+
+
+class Period(str, Enum):
+    """Time period filter options."""
+
+    all = "AllTime"
+    year = "Year"
+    month = "Month"
+    week = "Week"
+    day = "Day"
+
+
+class NsfwLevel(str, Enum):
+    """NSFW content filter levels."""
+
+    none = "None"
+    soft = "Soft"
+    mature = "Mature"
+    x = "X"
+
+
+class CommercialUse(str, Enum):
+    """Commercial use filter options."""
+
+    none = "None"
+    image = "Image"
+    rent = "Rent"
+    sell = "Sell"
+
+
 def _get_headers(api_key: str | None) -> dict[str, str]:
     """Get headers for CivitAI API requests."""
     headers: dict[str, str] = {}
@@ -27,21 +64,39 @@ def _get_headers(api_key: str | None) -> dict[str, str]:
 
 @router.get("/search", response_model=None)
 async def search_models(
-    query: str | None = Query(default=None, description="Search query"),
-    types: str | None = Query(default=None, description="Model type (Checkpoint, LORA, LoCon, etc.)"),
-    base_models: str | None = Query(default=None, alias="baseModels", description="Base model (SD 1.5, SDXL 1.0, Pony, etc.)"),
-    sort: str = Query(default="Most Downloaded", description="Sort order"),
-    limit: int = Query(default=20, le=100, description="Max results"),
-    nsfw: bool = Query(default=True, description="Include NSFW models"),
+    query: Annotated[str | None, Query(description="Search query")] = None,
+    types: Annotated[str | None, Query(description="Model type (Checkpoint, LORA, etc.)")] = None,
+    base_models: Annotated[str | None, Query(alias="baseModels", description="Base model")] = None,
+    sort: Annotated[SortOrder, Query(description="Sort order")] = SortOrder.most_downloaded,
+    limit: Annotated[int | None, Query(le=100, description="Max results (default: 25)", example=5)] = None,
+    period: Annotated[Period | None, Query(description="Time period filter")] = None,
+    tag: Annotated[str | None, Query(description="Filter by tag")] = None,
+    username: Annotated[str | None, Query(description="Filter by creator username")] = None,
+    page: Annotated[int | None, Query(ge=1, description="Page number")] = None,
+    nsfw: Annotated[NsfwLevel | None, Query(description="NSFW filter level")] = None,
+    sfw: Annotated[bool, Query(description="Exclude NSFW content")] = False,
+    commercial: Annotated[CommercialUse | None, Query(description="Commercial use filter")] = None,
 ) -> dict[str, Any] | Response:
-    """Search CivitAI models."""
+    """Search CivitAI models.
+
+    Supports all CivitAI search parameters including filters for type, base model,
+    time period, tags, creator, NSFW level, and commercial use.
+    """
     api_key = load_api_key()
+    actual_limit = limit if limit is not None else 25
 
     params: dict[str, Any] = {
-        "limit": min(limit, 100),
-        "nsfw": str(nsfw).lower(),
-        "sort": sort,
+        "limit": min(actual_limit, 100),
+        "sort": sort.value,
     }
+
+    # Handle NSFW filtering
+    if sfw:
+        params["nsfw"] = "false"
+    elif nsfw:
+        params["nsfwLevel"] = nsfw.value
+    else:
+        params["nsfw"] = "true"  # Default: include all
 
     if query:
         params["query"] = query
@@ -49,6 +104,16 @@ async def search_models(
         params["types"] = types
     if base_models:
         params["baseModels"] = base_models
+    if period:
+        params["period"] = period.value
+    if tag:
+        params["tag"] = tag
+    if username:
+        params["username"] = username
+    if page:
+        params["page"] = page
+    if commercial:
+        params["allowCommercialUse"] = commercial.value
 
     url = f"{CIVITAI_API_BASE}/models"
 
