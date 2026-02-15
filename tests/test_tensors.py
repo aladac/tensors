@@ -230,7 +230,7 @@ class TestEnums:
         assert BaseModel.sd15.to_api() == "SD 1.5"
         assert BaseModel.sdxl.to_api() == "SDXL 1.0"
         assert BaseModel.pony.to_api() == "Pony"
-        assert BaseModel.flux.to_api() == "Flux.1 D"
+        assert BaseModel.flux_dev.to_api() == "Flux.1 D"
         assert BaseModel.illustrious.to_api() == "Illustrious"
 
     def test_sort_order_to_api(self) -> None:
