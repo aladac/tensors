@@ -1,48 +1,67 @@
-"""SQLite database for local model metadata and CivitAI cache."""
+"""SQLModel database for local model metadata and CivitAI/HuggingFace cache."""
 
 from __future__ import annotations
 
 import json
-import sqlite3
-from pathlib import Path
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from sqlmodel import Session, col, func, select
+
 from tensors.config import DATA_DIR
+from tensors.models import (
+    Creator,
+    FileHash,
+    HFModel,
+    HFModelTag,
+    HFSafetensorFile,
+    ImageGenerationParam,
+    ImageResource,
+    LocalFile,
+    Model,
+    ModelTag,
+    ModelVersion,
+    SafetensorMetadata,
+    Tag,
+    TrainedWord,
+    VersionFile,
+    VersionImage,
+    create_tables,
+    get_engine,
+)
 from tensors.safetensor import compute_sha256, read_safetensor_metadata
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from rich.console import Console
+    from sqlalchemy import Engine
 
 # Database location
 DB_PATH = DATA_DIR / "models.db"
 
-# Load schema from file
-_SCHEMA_PATH = Path(__file__).parent / "schema.sql"
-
 
 class Database:
-    """SQLite database wrapper for models metadata."""
+    """SQLModel database wrapper for models metadata."""
 
     def __init__(self, db_path: Path | None = None) -> None:
         """Initialize database connection."""
         self.db_path = db_path or DB_PATH
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn: sqlite3.Connection | None = None
+        self._engine: Engine | None = None
 
     @property
-    def conn(self) -> sqlite3.Connection:
-        """Get or create database connection."""
-        if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path)
-            self._conn.row_factory = sqlite3.Row
-            self._conn.execute("PRAGMA foreign_keys = ON")
-        return self._conn
+    def engine(self) -> Engine:
+        """Get or create database engine."""
+        if self._engine is None:
+            self._engine = get_engine(str(self.db_path))
+        return self._engine
 
     def close(self) -> None:
         """Close database connection."""
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        if self._engine is not None:
+            self._engine.dispose()
+            self._engine = None
 
     def __enter__(self) -> Database:
         return self
@@ -51,10 +70,12 @@ class Database:
         self.close()
 
     def init_schema(self) -> None:
-        """Initialize database schema from schema.sql."""
-        schema = _SCHEMA_PATH.read_text()
-        self.conn.executescript(schema)
-        self.conn.commit()
+        """Initialize database schema."""
+        create_tables(self.engine)
+
+    def session(self) -> Session:
+        """Create a new session."""
+        return Session(self.engine)
 
     # =========================================================================
     # Local Files Operations
@@ -65,10 +86,7 @@ class Database:
         directory: Path,
         console: Console | None = None,
     ) -> list[dict[str, Any]]:
-        """Scan directory for safetensor files and add to database.
-
-        Returns list of scanned file info dicts.
-        """
+        """Scan directory for safetensor files and add to database."""
         results: list[dict[str, Any]] = []
         safetensor_files = list(directory.rglob("*.safetensors"))
 
@@ -80,18 +98,20 @@ class Database:
                 sha256 = compute_sha256(path)
                 metadata = read_safetensor_metadata(path)
 
-                file_info = self._upsert_local_file(
-                    file_path=str(path.resolve()),
-                    sha256=sha256,
-                    header_size=metadata.get("header_size"),
-                    tensor_count=metadata.get("tensor_count"),
-                )
+                with self.session() as session:
+                    file_info = self._upsert_local_file(
+                        session,
+                        file_path=str(path.resolve()),
+                        sha256=sha256,
+                        header_size=metadata.get("header_size"),
+                        tensor_count=metadata.get("tensor_count"),
+                    )
+                    self._store_safetensor_metadata(session, file_info.id, metadata.get("metadata", {}))
+                    session.commit()
+                    # Extract values before session closes
+                    result = {"id": file_info.id, "file_path": file_info.file_path, "sha256": file_info.sha256}
 
-                # Store safetensor metadata
-                self._store_safetensor_metadata(file_info["id"], metadata.get("metadata", {}))
-
-                results.append(file_info)
-                self.conn.commit()
+                results.append(result)
 
             except Exception as e:
                 if console:
@@ -101,100 +121,133 @@ class Database:
 
     def _upsert_local_file(
         self,
+        session: Session,
         file_path: str,
         sha256: str,
         header_size: int | None = None,
         tensor_count: int | None = None,
-    ) -> dict[str, Any]:
+    ) -> LocalFile:
         """Insert or update a local file record."""
-        cur = self.conn.cursor()
-
-        cur.execute("SELECT id FROM local_files WHERE file_path = ?", (file_path,))
-        existing = cur.fetchone()
+        existing = session.exec(select(LocalFile).where(LocalFile.file_path == file_path)).first()
 
         if existing:
-            cur.execute(
-                """
-                UPDATE local_files SET sha256 = ?, header_size = ?, tensor_count = ?,
-                updated_at = datetime('now') WHERE id = ?
-                """,
-                (sha256, header_size, tensor_count, existing["id"]),
-            )
-            file_id = existing["id"]
-        else:
-            cur.execute(
-                """
-                INSERT INTO local_files (file_path, sha256, header_size, tensor_count)
-                VALUES (?, ?, ?, ?)
-                """,
-                (file_path, sha256, header_size, tensor_count),
-            )
-            file_id = cur.lastrowid or 0  # lastrowid is always set after INSERT
+            existing.sha256 = sha256
+            existing.header_size = header_size
+            existing.tensor_count = tensor_count
+            existing.updated_at = datetime.utcnow()
+            session.add(existing)
+            return existing
 
-        return {"id": file_id, "file_path": file_path, "sha256": sha256}
+        local_file = LocalFile(
+            file_path=file_path,
+            sha256=sha256,
+            header_size=header_size,
+            tensor_count=tensor_count,
+        )
+        session.add(local_file)
+        session.flush()
+        return local_file
 
-    def _store_safetensor_metadata(self, local_file_id: int, metadata: dict[str, Any]) -> None:
+    def _store_safetensor_metadata(self, session: Session, local_file_id: int | None, metadata: dict[str, Any]) -> None:
         """Store safetensor header metadata."""
-        cur = self.conn.cursor()
+        if not local_file_id:
+            return
         for key, value in metadata.items():
             str_value = json.dumps(value) if not isinstance(value, str) else value
-            cur.execute(
-                """
-                INSERT INTO safetensor_metadata (local_file_id, key, value)
-                VALUES (?, ?, ?)
-                ON CONFLICT(local_file_id, key) DO UPDATE SET value = excluded.value
-                """,
-                (local_file_id, key, str_value),
-            )
+            existing = session.exec(
+                select(SafetensorMetadata).where(SafetensorMetadata.local_file_id == local_file_id, SafetensorMetadata.key == key)
+            ).first()
+            if existing:
+                existing.value = str_value
+                session.add(existing)
+            else:
+                session.add(SafetensorMetadata(local_file_id=local_file_id, key=key, value=str_value))
 
     def list_local_files(self) -> list[dict[str, Any]]:
         """List all local files with CivitAI info."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM v_local_files_full ORDER BY file_path")
-        return [dict(row) for row in cur.fetchall()]
+        with self.session() as session:
+            files = session.exec(select(LocalFile)).all()
+            results = []
+            for f in files:
+                model = None
+                if f.civitai_model_id:
+                    model = session.exec(select(Model).where(Model.civitai_id == f.civitai_model_id)).first()
+                version = None
+                if f.civitai_version_id:
+                    version = session.exec(select(ModelVersion).where(ModelVersion.civitai_id == f.civitai_version_id)).first()
+                creator = None
+                if model and model.creator_id:
+                    creator = session.exec(select(Creator).where(Creator.id == model.creator_id)).first()
+                results.append(
+                    {
+                        "id": f.id,
+                        "file_path": f.file_path,
+                        "sha256": f.sha256,
+                        "header_size": f.header_size,
+                        "tensor_count": f.tensor_count,
+                        "civitai_model_id": f.civitai_model_id,
+                        "civitai_version_id": f.civitai_version_id,
+                        "model_name": model.name if model else None,
+                        "model_type": model.type if model else None,
+                        "version_name": version.name if version else None,
+                        "base_model": version.base_model if version else None,
+                        "creator": creator.username if creator else None,
+                    }
+                )
+            return results
 
     def get_local_file_by_path(self, file_path: str) -> dict[str, Any] | None:
         """Get local file by path."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM v_local_files_full WHERE file_path = ?", (file_path,))
-        row = cur.fetchone()
-        return dict(row) if row else None
+        with self.session() as session:
+            f = session.exec(select(LocalFile).where(LocalFile.file_path == file_path)).first()
+            if not f:
+                return None
+            model = None
+            if f.civitai_model_id:
+                model = session.exec(select(Model).where(Model.civitai_id == f.civitai_model_id)).first()
+            version = None
+            if f.civitai_version_id:
+                version = session.exec(select(ModelVersion).where(ModelVersion.civitai_id == f.civitai_version_id)).first()
+            creator = None
+            if model and model.creator_id:
+                creator = session.exec(select(Creator).where(Creator.id == model.creator_id)).first()
+            return {
+                "id": f.id,
+                "file_path": f.file_path,
+                "sha256": f.sha256,
+                "civitai_model_id": f.civitai_model_id,
+                "civitai_version_id": f.civitai_version_id,
+                "model_name": model.name if model else None,
+                "model_type": model.type if model else None,
+                "version_name": version.name if version else None,
+                "base_model": version.base_model if version else None,
+                "creator": creator.username if creator else None,
+            }
 
     def get_local_file_by_hash(self, sha256: str) -> dict[str, Any] | None:
         """Get local file by SHA256 hash."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM v_local_files_full WHERE sha256 = ?", (sha256.upper(),))
-        row = cur.fetchone()
-        return dict(row) if row else None
+        with self.session() as session:
+            f = session.exec(select(LocalFile).where(LocalFile.sha256 == sha256.upper())).first()
+            if not f:
+                return None
+            return {"id": f.id, "file_path": f.file_path, "sha256": f.sha256}
 
     def get_unlinked_files(self) -> list[dict[str, Any]]:
         """Get local files not linked to CivitAI."""
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            SELECT id, file_path, sha256 FROM local_files
-            WHERE civitai_model_id IS NULL
-            """
-        )
-        return [dict(row) for row in cur.fetchall()]
+        with self.session() as session:
+            files = session.exec(select(LocalFile).where(LocalFile.civitai_model_id == None)).all()  # noqa: E711
+            return [{"id": f.id, "file_path": f.file_path, "sha256": f.sha256} for f in files]
 
-    def link_file_to_civitai(
-        self,
-        file_id: int,
-        model_id: int,
-        version_id: int,
-    ) -> None:
+    def link_file_to_civitai(self, file_id: int, model_id: int, version_id: int) -> None:
         """Link a local file to CivitAI model/version."""
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            UPDATE local_files
-            SET civitai_model_id = ?, civitai_version_id = ?, updated_at = datetime('now')
-            WHERE id = ?
-            """,
-            (model_id, version_id, file_id),
-        )
-        self.conn.commit()
+        with self.session() as session:
+            f = session.get(LocalFile, file_id)
+            if f:
+                f.civitai_model_id = model_id
+                f.civitai_version_id = version_id
+                f.updated_at = datetime.utcnow()
+                session.add(f)
+                session.commit()
 
     # =========================================================================
     # CivitAI Cache Operations
@@ -202,111 +255,88 @@ class Database:
 
     def get_version_by_hash(self, sha256: str) -> dict[str, Any] | None:
         """Find cached version by file hash."""
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            SELECT mv.civitai_id as version_id, m.civitai_id as model_id,
-                   m.name as model_name, mv.name as version_name
-            FROM file_hashes fh
-            JOIN version_files vf ON fh.file_id = vf.id
-            JOIN model_versions mv ON vf.version_id = mv.id
-            JOIN models m ON mv.model_id = m.id
-            WHERE UPPER(fh.hash_value) = UPPER(?)
-            """,
-            (sha256,),
-        )
-        row = cur.fetchone()
-        return dict(row) if row else None
+        with self.session() as session:
+            fh = session.exec(select(FileHash).where(FileHash.hash_value == sha256.upper())).first()
+            if not fh:
+                return None
+            vf = session.get(VersionFile, fh.file_id)
+            if not vf:
+                return None
+            mv = session.get(ModelVersion, vf.version_id)
+            if not mv:
+                return None
+            m = session.get(Model, mv.model_id)
+            return {
+                "version_id": mv.civitai_id,
+                "model_id": m.civitai_id if m else None,
+                "model_name": m.name if m else None,
+                "version_name": mv.name,
+            }
 
     def cache_model(self, data: dict[str, Any]) -> int:
-        """Cache full model data from CivitAI API response.
+        """Cache full model data from CivitAI API response."""
+        with self.session() as session:
+            creator_id = self._get_or_create_creator(session, data.get("creator"))
+            civitai_id = data.get("id")
+            existing = session.exec(select(Model).where(Model.civitai_id == civitai_id)).first()
+            stats = data.get("stats", {})
 
-        Returns the internal model ID.
-        """
-        cur = self.conn.cursor()
+            if existing:
+                existing.name = data.get("name", existing.name)
+                existing.description = data.get("description")
+                existing.type = data.get("type", existing.type)
+                existing.nsfw = bool(data.get("nsfw"))
+                existing.download_count = stats.get("downloadCount", 0)
+                existing.thumbs_up_count = stats.get("thumbsUpCount", 0)
+                existing.updated_at = datetime.utcnow()
+                session.add(existing)
+                model_id = existing.id
+            else:
+                model = Model(
+                    civitai_id=civitai_id,
+                    name=data.get("name", ""),
+                    description=data.get("description"),
+                    type=data.get("type", ""),
+                    nsfw=bool(data.get("nsfw")),
+                    poi=bool(data.get("poi")),
+                    minor=bool(data.get("minor")),
+                    sfw_only=bool(data.get("sfwOnly")),
+                    nsfw_level=data.get("nsfwLevel"),
+                    availability=data.get("availability"),
+                    allow_no_credit=bool(data.get("allowNoCredit")),
+                    allow_commercial_use=str(data.get("allowCommercialUse", "")),
+                    allow_derivatives=bool(data.get("allowDerivatives")),
+                    allow_different_license=bool(data.get("allowDifferentLicense")),
+                    supports_generation=bool(data.get("supportsGeneration")),
+                    creator_id=creator_id,
+                    download_count=stats.get("downloadCount", 0),
+                    thumbs_up_count=stats.get("thumbsUpCount", 0),
+                    thumbs_down_count=stats.get("thumbsDownCount", 0),
+                    comment_count=stats.get("commentCount", 0),
+                    tipped_amount_count=stats.get("tippedAmountCount", 0),
+                )
+                session.add(model)
+                session.flush()
+                model_id = model.id
 
-        # Get or create creator
-        creator_id = self._get_or_create_creator(data.get("creator"))
+            # Cache tags
+            for tag_name in data.get("tags", []):
+                tag_id = self._get_or_create_tag(session, tag_name)
+                if model_id and tag_id:
+                    existing_mt = session.exec(
+                        select(ModelTag).where(ModelTag.model_id == model_id, ModelTag.tag_id == tag_id)
+                    ).first()
+                    if not existing_mt:
+                        session.add(ModelTag(model_id=model_id, tag_id=tag_id))
 
-        # Check if model exists
-        civitai_id = data.get("id")
-        cur.execute("SELECT id FROM models WHERE civitai_id = ?", (civitai_id,))
-        existing = cur.fetchone()
+            # Cache versions
+            for idx, version in enumerate(data.get("modelVersions", [])):
+                self._cache_version(session, model_id, version, idx)
 
-        stats = data.get("stats", {})
+            session.commit()
+            return model_id or 0
 
-        if existing:
-            model_id = int(existing["id"])
-            cur.execute(
-                """
-                UPDATE models SET
-                    name = ?, description = ?, type = ?, nsfw = ?,
-                    download_count = ?, thumbs_up_count = ?,
-                    updated_at = datetime('now')
-                WHERE id = ?
-                """,
-                (
-                    data.get("name"),
-                    data.get("description"),
-                    data.get("type"),
-                    1 if data.get("nsfw") else 0,
-                    stats.get("downloadCount", 0),
-                    stats.get("thumbsUpCount", 0),
-                    model_id,
-                ),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO models (
-                    civitai_id, name, description, type, nsfw, poi, minor,
-                    sfw_only, nsfw_level, availability, allow_no_credit,
-                    allow_commercial_use, allow_derivatives, allow_different_license,
-                    supports_generation, creator_id, download_count, thumbs_up_count,
-                    thumbs_down_count, comment_count, tipped_amount_count,
-                    created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                """,
-                (
-                    civitai_id,
-                    data.get("name"),
-                    data.get("description"),
-                    data.get("type"),
-                    1 if data.get("nsfw") else 0,
-                    1 if data.get("poi") else 0,
-                    1 if data.get("minor") else 0,
-                    1 if data.get("sfwOnly") else 0,
-                    data.get("nsfwLevel"),
-                    data.get("availability"),
-                    1 if data.get("allowNoCredit") else 0,
-                    str(data.get("allowCommercialUse", "")),
-                    1 if data.get("allowDerivatives") else 0,
-                    1 if data.get("allowDifferentLicense") else 0,
-                    1 if data.get("supportsGeneration") else 0,
-                    creator_id,
-                    stats.get("downloadCount", 0),
-                    stats.get("thumbsUpCount", 0),
-                    stats.get("thumbsDownCount", 0),
-                    stats.get("commentCount", 0),
-                    stats.get("tippedAmountCount", 0),
-                    data.get("createdAt"),
-                ),
-            )
-            model_id = cur.lastrowid or 0  # lastrowid is always set after INSERT
-
-        # Cache tags
-        for tag_name in data.get("tags", []):
-            tag_id = self._get_or_create_tag(tag_name)
-            cur.execute("INSERT OR IGNORE INTO model_tags (model_id, tag_id) VALUES (?, ?)", (model_id, tag_id))
-
-        # Cache versions
-        for idx, version in enumerate(data.get("modelVersions", [])):
-            self._cache_version(model_id, version, idx)
-
-        self.conn.commit()
-        return model_id
-
-    def _get_or_create_creator(self, creator_data: dict[str, Any] | None) -> int | None:
+    def _get_or_create_creator(self, session: Session, creator_data: dict[str, Any] | None) -> int | None:
         """Get or create a creator record."""
         if not creator_data:
             return None
@@ -314,180 +344,148 @@ class Database:
         if not username:
             return None
 
-        cur = self.conn.cursor()
-        cur.execute("SELECT id FROM creators WHERE username = ?", (username,))
-        row = cur.fetchone()
-        if row:
-            return int(row["id"])
+        existing = session.exec(select(Creator).where(Creator.username == username)).first()
+        if existing:
+            return existing.id
 
-        cur.execute(
-            "INSERT INTO creators (username, image_url) VALUES (?, ?)",
-            (username, creator_data.get("image")),
-        )
-        return cur.lastrowid or 0
+        creator = Creator(username=username, image_url=creator_data.get("image"))
+        session.add(creator)
+        session.flush()
+        return creator.id
 
-    def _get_or_create_tag(self, tag_name: str) -> int:
+    def _get_or_create_tag(self, session: Session, tag_name: str) -> int | None:
         """Get or create a tag record."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT id FROM tags WHERE name = ?", (tag_name,))
-        row = cur.fetchone()
-        if row:
-            return int(row["id"])
+        existing = session.exec(select(Tag).where(Tag.name == tag_name)).first()
+        if existing:
+            return existing.id
 
-        cur.execute("INSERT INTO tags (name) VALUES (?)", (tag_name,))
-        return cur.lastrowid or 0  # lastrowid is always set after INSERT
+        tag = Tag(name=tag_name)
+        session.add(tag)
+        session.flush()
+        return tag.id
 
-    def _cache_version(self, model_id: int, version: dict[str, Any], index: int) -> int:
+    def _cache_version(self, session: Session, model_id: int | None, version: dict[str, Any], index: int) -> int | None:
         """Cache a model version."""
-        cur = self.conn.cursor()
+        if not model_id:
+            return None
         civitai_id = version.get("id")
-
-        cur.execute("SELECT id FROM model_versions WHERE civitai_id = ?", (civitai_id,))
-        existing = cur.fetchone()
-
+        existing = session.exec(select(ModelVersion).where(ModelVersion.civitai_id == civitai_id)).first()
         stats = version.get("stats", {})
 
         if existing:
-            version_id = int(existing["id"])
+            version_id = existing.id
         else:
-            cur.execute(
-                """
-                INSERT INTO model_versions (
-                    civitai_id, model_id, name, description, base_model,
-                    base_model_type, nsfw_level, status, availability,
-                    download_count, thumbs_up_count, thumbs_down_count,
-                    supports_generation, download_url, created_at, published_at,
-                    updated_at, version_index
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    civitai_id,
-                    model_id,
-                    version.get("name"),
-                    version.get("description"),
-                    version.get("baseModel"),
-                    version.get("baseModelType"),
-                    version.get("nsfwLevel"),
-                    version.get("status"),
-                    version.get("availability"),
-                    stats.get("downloadCount", 0),
-                    stats.get("thumbsUpCount", 0),
-                    stats.get("thumbsDownCount", 0),
-                    1 if version.get("supportsGeneration") else 0,
-                    version.get("downloadUrl"),
-                    version.get("createdAt"),
-                    version.get("publishedAt"),
-                    version.get("updatedAt"),
-                    index,
-                ),
+            mv = ModelVersion(
+                civitai_id=civitai_id,
+                model_id=model_id,
+                name=version.get("name", ""),
+                description=version.get("description"),
+                base_model=version.get("baseModel"),
+                base_model_type=version.get("baseModelType"),
+                nsfw_level=version.get("nsfwLevel"),
+                status=version.get("status"),
+                availability=version.get("availability"),
+                download_count=stats.get("downloadCount", 0),
+                thumbs_up_count=stats.get("thumbsUpCount", 0),
+                thumbs_down_count=stats.get("thumbsDownCount", 0),
+                supports_generation=bool(version.get("supportsGeneration")),
+                download_url=version.get("downloadUrl"),
+                version_index=index,
             )
-            version_id = cur.lastrowid or 0  # lastrowid is always set after INSERT
+            session.add(mv)
+            session.flush()
+            version_id = mv.id
 
         # Cache trained words
         for pos, word in enumerate(version.get("trainedWords", [])):
-            cur.execute(
-                "INSERT OR IGNORE INTO trained_words (version_id, word, position) VALUES (?, ?, ?)",
-                (version_id, word, pos),
-            )
+            existing_tw = session.exec(
+                select(TrainedWord).where(TrainedWord.version_id == version_id, TrainedWord.word == word)
+            ).first()
+            if not existing_tw:
+                session.add(TrainedWord(version_id=version_id, word=word, position=pos))
 
-        # Cache files and hashes
+        # Cache files
         for file_data in version.get("files", []):
-            self._cache_file(version_id, file_data)
+            self._cache_file(session, version_id, file_data)
 
         # Cache images
         for image_data in version.get("images", []):
-            self._cache_image(version_id, image_data)
+            self._cache_image(session, version_id, image_data)
 
         return version_id
 
-    def _cache_file(self, version_id: int, file_data: dict[str, Any]) -> int | None:
+    def _cache_file(self, session: Session, version_id: int | None, file_data: dict[str, Any]) -> int | None:
         """Cache a version file."""
-        cur = self.conn.cursor()
+        if not version_id:
+            return None
         civitai_id = file_data.get("id")
         if not civitai_id:
             return None
 
-        cur.execute("SELECT id FROM version_files WHERE civitai_id = ?", (civitai_id,))
-        existing = cur.fetchone()
-
+        existing = session.exec(select(VersionFile).where(VersionFile.civitai_id == civitai_id)).first()
         if existing:
-            return int(existing["id"])
+            return existing.id
 
         meta = file_data.get("metadata", {})
-        cur.execute(
-            """
-            INSERT INTO version_files (
-                civitai_id, version_id, name, type, size_kb, format,
-                size_type, fp, is_primary, pickle_scan_result,
-                virus_scan_result, scanned_at, download_url
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                civitai_id,
-                version_id,
-                file_data.get("name"),
-                file_data.get("type"),
-                file_data.get("sizeKB"),
-                meta.get("format"),
-                meta.get("size"),
-                meta.get("fp"),
-                1 if file_data.get("primary") else 0,
-                file_data.get("pickleScanResult"),
-                file_data.get("virusScanResult"),
-                file_data.get("scannedAt"),
-                file_data.get("downloadUrl"),
-            ),
+        vf = VersionFile(
+            civitai_id=civitai_id,
+            version_id=version_id,
+            name=file_data.get("name", ""),
+            type=file_data.get("type"),
+            size_kb=file_data.get("sizeKB"),
+            format=meta.get("format"),
+            size_type=meta.get("size"),
+            fp=meta.get("fp"),
+            is_primary=bool(file_data.get("primary")),
+            pickle_scan_result=file_data.get("pickleScanResult"),
+            virus_scan_result=file_data.get("virusScanResult"),
+            download_url=file_data.get("downloadUrl"),
         )
-        file_id = cur.lastrowid or 0  # lastrowid is always set after INSERT
+        session.add(vf)
+        session.flush()
+        file_id = vf.id
 
         # Cache hashes
         for hash_type, hash_value in file_data.get("hashes", {}).items():
-            cur.execute(
-                "INSERT OR IGNORE INTO file_hashes (file_id, hash_type, hash_value) VALUES (?, ?, ?)",
-                (file_id, hash_type, hash_value),
-            )
+            existing_fh = session.exec(
+                select(FileHash).where(FileHash.file_id == file_id, FileHash.hash_type == hash_type)
+            ).first()
+            if not existing_fh:
+                session.add(FileHash(file_id=file_id, hash_type=hash_type, hash_value=hash_value))
 
         return file_id
 
-    def _cache_image(self, version_id: int, image_data: dict[str, Any]) -> int | None:
+    def _cache_image(self, session: Session, version_id: int | None, image_data: dict[str, Any]) -> int | None:
         """Cache a version image."""
-        cur = self.conn.cursor()
+        if not version_id:
+            return None
         url = image_data.get("url")
         if not url:
             return None
 
-        cur.execute("SELECT id FROM version_images WHERE url = ?", (url,))
-        existing = cur.fetchone()
-
+        existing = session.exec(select(VersionImage).where(VersionImage.url == url)).first()
         if existing:
-            return int(existing["id"])
+            return existing.id
 
-        cur.execute(
-            """
-            INSERT INTO version_images (
-                civitai_id, version_id, url, type, nsfw_level, width,
-                height, hash, has_meta, has_positive_prompt, on_site,
-                minor, poi, availability
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                image_data.get("id"),
-                version_id,
-                url,
-                image_data.get("type"),
-                image_data.get("nsfwLevel"),
-                image_data.get("width"),
-                image_data.get("height"),
-                image_data.get("hash"),
-                1 if image_data.get("hasMeta") else 0,
-                1 if image_data.get("hasPositivePrompt") else 0,
-                1 if image_data.get("onSite") else 0,
-                1 if image_data.get("minor") else 0,
-                1 if image_data.get("poi") else 0,
-                image_data.get("availability"),
-            ),
+        vi = VersionImage(
+            civitai_id=image_data.get("id"),
+            version_id=version_id,
+            url=url,
+            type=image_data.get("type"),
+            nsfw_level=image_data.get("nsfwLevel"),
+            width=image_data.get("width"),
+            height=image_data.get("height"),
+            hash=image_data.get("hash"),
+            has_meta=bool(image_data.get("hasMeta")),
+            has_positive_prompt=bool(image_data.get("hasPositivePrompt")),
+            on_site=bool(image_data.get("onSite")),
+            minor=bool(image_data.get("minor")),
+            poi=bool(image_data.get("poi")),
+            availability=image_data.get("availability"),
         )
-        image_id = cur.lastrowid or 0  # lastrowid is always set after INSERT
+        session.add(vi)
+        session.flush()
+        image_id = vi.id
 
         # Cache generation params
         meta = image_data.get("meta", {})
@@ -495,19 +493,169 @@ class Database:
             if key == "resources":
                 continue
             str_value = str(value) if value is not None else None
-            cur.execute(
-                "INSERT OR IGNORE INTO image_generation_params (image_id, key, value) VALUES (?, ?, ?)",
-                (image_id, key, str_value),
-            )
+            session.add(ImageGenerationParam(image_id=image_id, key=key, value=str_value))
 
         # Cache resources
         for res in meta.get("resources", []):
-            cur.execute(
-                "INSERT INTO image_resources (image_id, name, type, hash, weight) VALUES (?, ?, ?, ?, ?)",
-                (image_id, res.get("name"), res.get("type"), res.get("hash"), res.get("weight")),
+            session.add(
+                ImageResource(
+                    image_id=image_id,
+                    name=res.get("name", ""),
+                    type=res.get("type"),
+                    hash=res.get("hash"),
+                    weight=res.get("weight"),
+                )
             )
 
         return image_id
+
+    # =========================================================================
+    # HuggingFace Cache Operations
+    # =========================================================================
+
+    def cache_hf_model(self, data: dict[str, Any]) -> int:
+        """Cache HuggingFace model data."""
+        repo_id = data.get("repo_id") or data.get("id") or data.get("modelId")
+        if not repo_id:
+            raise ValueError("repo_id is required")
+
+        author = data.get("author")
+        model_name = repo_id
+        if "/" in repo_id:
+            parts = repo_id.split("/", 1)
+            author = author or parts[0]
+            model_name = parts[1]
+
+        with self.session() as session:
+            existing = session.exec(select(HFModel).where(HFModel.repo_id == repo_id)).first()
+
+            if existing:
+                existing.author = author
+                existing.model_name = model_name
+                existing.pipeline_tag = data.get("pipeline_tag")
+                existing.library_name = data.get("library_name")
+                existing.downloads = data.get("downloads", 0)
+                existing.likes = data.get("likes", 0)
+                existing.trending_score = data.get("trending_score")
+                existing.is_private = bool(data.get("private"))
+                existing.is_gated = bool(data.get("gated"))
+                existing.last_modified = data.get("last_modified") or data.get("lastModified")
+                existing.updated_at = datetime.utcnow()
+                session.add(existing)
+                model_id = existing.id
+            else:
+                hf_model = HFModel(
+                    repo_id=repo_id,
+                    author=author,
+                    model_name=model_name,
+                    pipeline_tag=data.get("pipeline_tag"),
+                    library_name=data.get("library_name"),
+                    downloads=data.get("downloads", 0),
+                    likes=data.get("likes", 0),
+                    trending_score=data.get("trending_score"),
+                    is_private=bool(data.get("private")),
+                    is_gated=bool(data.get("gated")),
+                    last_modified=data.get("last_modified") or data.get("lastModified"),
+                    created_at=data.get("created_at") or data.get("createdAt"),
+                )
+                session.add(hf_model)
+                session.flush()
+                model_id = hf_model.id
+
+            # Cache tags
+            for tag in data.get("tags", []):
+                existing_tag = session.exec(
+                    select(HFModelTag).where(HFModelTag.hf_model_id == model_id, HFModelTag.tag == tag)
+                ).first()
+                if not existing_tag:
+                    session.add(HFModelTag(hf_model_id=model_id, tag=tag))
+
+            # Cache safetensor files
+            for file_info in data.get("safetensor_files", []):
+                if isinstance(file_info, str):
+                    existing_sf = session.exec(
+                        select(HFSafetensorFile).where(
+                            HFSafetensorFile.hf_model_id == model_id, HFSafetensorFile.filename == file_info
+                        )
+                    ).first()
+                    if not existing_sf:
+                        session.add(HFSafetensorFile(hf_model_id=model_id, filename=file_info))
+                elif isinstance(file_info, dict):
+                    filename = file_info.get("filename")
+                    if filename:
+                        existing_sf = session.exec(
+                            select(HFSafetensorFile).where(
+                                HFSafetensorFile.hf_model_id == model_id, HFSafetensorFile.filename == filename
+                            )
+                        ).first()
+                        if not existing_sf:
+                            session.add(
+                                HFSafetensorFile(hf_model_id=model_id, filename=filename, size_bytes=file_info.get("size"))
+                            )
+
+            session.commit()
+            return model_id or 0
+
+    def search_hf_models(
+        self,
+        query: str | None = None,
+        author: str | None = None,
+        pipeline_tag: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Search cached HuggingFace models."""
+        with self.session() as session:
+            stmt = select(HFModel)
+
+            if query:
+                stmt = stmt.where(col(HFModel.repo_id).contains(query) | col(HFModel.model_name).contains(query))
+            if author:
+                stmt = stmt.where(HFModel.author == author)
+            if pipeline_tag:
+                stmt = stmt.where(HFModel.pipeline_tag == pipeline_tag)
+
+            stmt = stmt.order_by(col(HFModel.downloads).desc()).limit(limit)
+            models = session.exec(stmt).all()
+
+            return [
+                {
+                    "id": m.id,
+                    "repo_id": m.repo_id,
+                    "author": m.author,
+                    "model_name": m.model_name,
+                    "pipeline_tag": m.pipeline_tag,
+                    "downloads": m.downloads,
+                    "likes": m.likes,
+                    "is_gated": m.is_gated,
+                }
+                for m in models
+            ]
+
+    def get_hf_model(self, repo_id: str) -> dict[str, Any] | None:
+        """Get cached HF model by repo_id."""
+        with self.session() as session:
+            m = session.exec(select(HFModel).where(HFModel.repo_id == repo_id)).first()
+            if not m:
+                return None
+            return {
+                "id": m.id,
+                "repo_id": m.repo_id,
+                "author": m.author,
+                "model_name": m.model_name,
+                "pipeline_tag": m.pipeline_tag,
+                "downloads": m.downloads,
+                "likes": m.likes,
+                "is_gated": m.is_gated,
+            }
+
+    def get_hf_safetensor_files(self, repo_id: str) -> list[dict[str, Any]]:
+        """Get safetensor files for an HF model."""
+        with self.session() as session:
+            m = session.exec(select(HFModel).where(HFModel.repo_id == repo_id)).first()
+            if not m:
+                return []
+            files = session.exec(select(HFSafetensorFile).where(HFSafetensorFile.hf_model_id == m.id)).all()
+            return [{"filename": f.filename, "size_bytes": f.size_bytes} for f in files]
 
     # =========================================================================
     # Query Operations
@@ -520,227 +668,92 @@ class Database:
         base_model: str | None = None,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Search cached models."""
-        cur = self.conn.cursor()
+        """Search cached CivitAI models."""
+        with self.session() as session:
+            stmt = select(Model)
 
-        sql = "SELECT * FROM v_models_with_latest WHERE 1=1"
-        params: list[Any] = []
+            if query:
+                stmt = stmt.where(col(Model.name).contains(query))
+            if model_type:
+                stmt = stmt.where(Model.type == model_type)
 
-        if query:
-            sql += " AND name LIKE ?"
-            params.append(f"%{query}%")
+            stmt = stmt.order_by(col(Model.download_count).desc()).limit(limit)
+            models = session.exec(stmt).all()
 
-        if model_type:
-            sql += " AND type = ?"
-            params.append(model_type)
+            results = []
+            for m in models:
+                # Get latest version
+                latest = session.exec(
+                    select(ModelVersion).where(ModelVersion.model_id == m.id, ModelVersion.version_index == 0)
+                ).first()
+                creator = session.get(Creator, m.creator_id) if m.creator_id else None
 
-        if base_model:
-            sql += " AND base_model LIKE ?"
-            params.append(f"%{base_model}%")
+                # Filter by base_model if specified
+                if base_model and latest and latest.base_model and base_model.lower() not in latest.base_model.lower():
+                    continue
 
-        sql += " ORDER BY download_count DESC LIMIT ?"
-        params.append(limit)
+                results.append(
+                    {
+                        "id": m.id,
+                        "civitai_id": m.civitai_id,
+                        "name": m.name,
+                        "type": m.type,
+                        "nsfw": m.nsfw,
+                        "creator": creator.username if creator else None,
+                        "latest_version": latest.name if latest else None,
+                        "base_model": latest.base_model if latest else None,
+                        "download_count": m.download_count,
+                        "thumbs_up_count": m.thumbs_up_count,
+                    }
+                )
 
-        cur.execute(sql, params)
-        return [dict(row) for row in cur.fetchall()]
+            return results[:limit]
 
     def get_model(self, civitai_id: int) -> dict[str, Any] | None:
         """Get cached model by CivitAI ID."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM v_models_with_latest WHERE civitai_id = ?", (civitai_id,))
-        row = cur.fetchone()
-        return dict(row) if row else None
+        with self.session() as session:
+            m = session.exec(select(Model).where(Model.civitai_id == civitai_id)).first()
+            if not m:
+                return None
+            latest = session.exec(
+                select(ModelVersion).where(ModelVersion.model_id == m.id, ModelVersion.version_index == 0)
+            ).first()
+            creator = session.get(Creator, m.creator_id) if m.creator_id else None
+            return {
+                "id": m.id,
+                "civitai_id": m.civitai_id,
+                "name": m.name,
+                "type": m.type,
+                "creator": creator.username if creator else None,
+                "latest_version": latest.name if latest else None,
+                "base_model": latest.base_model if latest else None,
+                "download_count": m.download_count,
+            }
 
     def get_triggers(self, file_path: str) -> list[str]:
         """Get trigger words for a local file."""
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            SELECT tw.word
-            FROM trained_words tw
-            JOIN model_versions mv ON tw.version_id = mv.id
-            JOIN local_files lf ON lf.civitai_version_id = mv.civitai_id
-            WHERE lf.file_path = ?
-            ORDER BY tw.position
-            """,
-            (file_path,),
-        )
-        return [row["word"] for row in cur.fetchall()]
+        with self.session() as session:
+            lf = session.exec(select(LocalFile).where(LocalFile.file_path == file_path)).first()
+            if not lf or not lf.civitai_version_id:
+                return []
+            mv = session.exec(select(ModelVersion).where(ModelVersion.civitai_id == lf.civitai_version_id)).first()
+            if not mv:
+                return []
+            words = session.exec(
+                select(TrainedWord).where(TrainedWord.version_id == mv.id).order_by(col(TrainedWord.position))
+            ).all()
+            return [w.word for w in words]
 
     def get_triggers_by_version(self, version_id: int) -> list[str]:
         """Get trigger words for a version by CivitAI version ID."""
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            SELECT tw.word
-            FROM trained_words tw
-            JOIN model_versions mv ON tw.version_id = mv.id
-            WHERE mv.civitai_id = ?
-            ORDER BY tw.position
-            """,
-            (version_id,),
-        )
-        return [row["word"] for row in cur.fetchall()]
-
-    # =========================================================================
-    # HuggingFace Cache Operations
-    # =========================================================================
-
-    def cache_hf_model(self, data: dict[str, Any]) -> int:
-        """Cache HuggingFace model data.
-
-        Args:
-            data: Model data dict with keys like repo_id, author, downloads, etc.
-
-        Returns the internal model ID.
-        """
-        cur = self.conn.cursor()
-
-        repo_id = data.get("repo_id") or data.get("id") or data.get("modelId")
-        if not repo_id:
-            raise ValueError("repo_id is required")
-
-        # Parse author from repo_id if not provided
-        author = data.get("author")
-        model_name = repo_id
-        if "/" in repo_id:
-            parts = repo_id.split("/", 1)
-            author = author or parts[0]
-            model_name = parts[1]
-
-        # Check if model exists
-        cur.execute("SELECT id FROM hf_models WHERE repo_id = ?", (repo_id,))
-        existing = cur.fetchone()
-
-        if existing:
-            model_id = int(existing["id"])
-            cur.execute(
-                """
-                UPDATE hf_models SET
-                    author = ?, model_name = ?, pipeline_tag = ?, library_name = ?,
-                    downloads = ?, likes = ?, trending_score = ?,
-                    is_private = ?, is_gated = ?, last_modified = ?,
-                    updated_at = datetime('now')
-                WHERE id = ?
-                """,
-                (
-                    author,
-                    model_name,
-                    data.get("pipeline_tag"),
-                    data.get("library_name"),
-                    data.get("downloads", 0),
-                    data.get("likes", 0),
-                    data.get("trending_score"),
-                    1 if data.get("private") else 0,
-                    1 if data.get("gated") else 0,
-                    data.get("last_modified") or data.get("lastModified"),
-                    model_id,
-                ),
-            )
-        else:
-            cur.execute(
-                """
-                INSERT INTO hf_models (
-                    repo_id, author, model_name, pipeline_tag, library_name,
-                    downloads, likes, trending_score, is_private, is_gated,
-                    last_modified, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    repo_id,
-                    author,
-                    model_name,
-                    data.get("pipeline_tag"),
-                    data.get("library_name"),
-                    data.get("downloads", 0),
-                    data.get("likes", 0),
-                    data.get("trending_score"),
-                    1 if data.get("private") else 0,
-                    1 if data.get("gated") else 0,
-                    data.get("last_modified") or data.get("lastModified"),
-                    data.get("created_at") or data.get("createdAt"),
-                ),
-            )
-            model_id = cur.lastrowid or 0
-
-        # Cache tags
-        for tag in data.get("tags", []):
-            cur.execute(
-                "INSERT OR IGNORE INTO hf_model_tags (hf_model_id, tag) VALUES (?, ?)",
-                (model_id, tag),
-            )
-
-        # Cache safetensor files
-        for file_info in data.get("safetensor_files", []):
-            if isinstance(file_info, str):
-                cur.execute(
-                    "INSERT OR IGNORE INTO hf_safetensor_files (hf_model_id, filename) VALUES (?, ?)",
-                    (model_id, file_info),
-                )
-            elif isinstance(file_info, dict):
-                cur.execute(
-                    """
-                    INSERT OR IGNORE INTO hf_safetensor_files (hf_model_id, filename, size_bytes)
-                    VALUES (?, ?, ?)
-                    """,
-                    (model_id, file_info.get("filename"), file_info.get("size")),
-                )
-
-        self.conn.commit()
-        return model_id
-
-    def search_hf_models(
-        self,
-        query: str | None = None,
-        author: str | None = None,
-        pipeline_tag: str | None = None,
-        limit: int = 20,
-    ) -> list[dict[str, Any]]:
-        """Search cached HuggingFace models."""
-        cur = self.conn.cursor()
-
-        sql = "SELECT * FROM v_hf_models WHERE 1=1"
-        params: list[Any] = []
-
-        if query:
-            sql += " AND (repo_id LIKE ? OR model_name LIKE ?)"
-            params.extend([f"%{query}%", f"%{query}%"])
-
-        if author:
-            sql += " AND author = ?"
-            params.append(author)
-
-        if pipeline_tag:
-            sql += " AND pipeline_tag = ?"
-            params.append(pipeline_tag)
-
-        sql += " ORDER BY downloads DESC LIMIT ?"
-        params.append(limit)
-
-        cur.execute(sql, params)
-        return [dict(row) for row in cur.fetchall()]
-
-    def get_hf_model(self, repo_id: str) -> dict[str, Any] | None:
-        """Get cached HF model by repo_id."""
-        cur = self.conn.cursor()
-        cur.execute("SELECT * FROM v_hf_models WHERE repo_id = ?", (repo_id,))
-        row = cur.fetchone()
-        return dict(row) if row else None
-
-    def get_hf_safetensor_files(self, repo_id: str) -> list[dict[str, Any]]:
-        """Get safetensor files for an HF model."""
-        cur = self.conn.cursor()
-        cur.execute(
-            """
-            SELECT hsf.filename, hsf.size_bytes
-            FROM hf_safetensor_files hsf
-            JOIN hf_models hm ON hsf.hf_model_id = hm.id
-            WHERE hm.repo_id = ?
-            ORDER BY hsf.filename
-            """,
-            (repo_id,),
-        )
-        return [dict(row) for row in cur.fetchall()]
+        with self.session() as session:
+            mv = session.exec(select(ModelVersion).where(ModelVersion.civitai_id == version_id)).first()
+            if not mv:
+                return []
+            words = session.exec(
+                select(TrainedWord).where(TrainedWord.version_id == mv.id).order_by(col(TrainedWord.position))
+            ).all()
+            return [w.word for w in words]
 
     # =========================================================================
     # Statistics
@@ -748,19 +761,16 @@ class Database:
 
     def get_stats(self) -> dict[str, int]:
         """Get database statistics."""
-        cur = self.conn.cursor()
-        stats = {}
-        for table in [
-            "local_files",
-            "models",
-            "model_versions",
-            "version_files",
-            "trained_words",
-            "creators",
-            "tags",
-            "hf_models",
-            "hf_safetensor_files",
-        ]:
-            cur.execute(f"SELECT COUNT(*) FROM {table}")
-            stats[table] = cur.fetchone()[0]
-        return stats
+        with self.session() as session:
+            stats = {
+                "local_files": session.exec(select(func.count(col(LocalFile.id)))).one(),
+                "models": session.exec(select(func.count(col(Model.id)))).one(),
+                "model_versions": session.exec(select(func.count(col(ModelVersion.id)))).one(),
+                "version_files": session.exec(select(func.count(col(VersionFile.id)))).one(),
+                "trained_words": session.exec(select(func.count(col(TrainedWord.id)))).one(),
+                "creators": session.exec(select(func.count(col(Creator.id)))).one(),
+                "tags": session.exec(select(func.count(col(Tag.id)))).one(),
+                "hf_models": session.exec(select(func.count(col(HFModel.id)))).one(),
+                "hf_safetensor_files": session.exec(select(func.count(col(HFSafetensorFile.id)))).one(),
+            }
+            return stats

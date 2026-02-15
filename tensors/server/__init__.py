@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
 
 from tensors.config import get_server_api_key
@@ -45,6 +46,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
+    )
+
+    # CORS - allow all origins
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # Public endpoints (no auth)
