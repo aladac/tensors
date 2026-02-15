@@ -1,12 +1,8 @@
-"""Tests for tensors.server package (FastAPI sd-server proxy wrapper)."""
+"""Tests for tensors.server package (gallery and CivitAI management)."""
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
-
-import httpx
 import pytest
-import respx
 from fastapi.testclient import TestClient
 
 from tensors.server import create_app
@@ -14,87 +10,17 @@ from tensors.server import create_app
 
 @pytest.fixture()
 def api() -> TestClient:
-    """Create test client with mock sd-server URL."""
-    return TestClient(create_app(sd_server_url="http://mock-sd-server:1234"))
+    """Create test client."""
+    return TestClient(create_app())
 
 
 class TestStatus:
-    @respx.mock
-    def test_status_when_backend_reachable(self) -> None:
-        """Test status endpoint when sd-server is reachable."""
-        respx.get("http://mock-sd-server:1234/").mock(return_value=httpx.Response(200))
-
-        with TestClient(create_app(sd_server_url="http://mock-sd-server:1234")) as client:
-            r = client.get("/status")
-            assert r.status_code == 200
-            data = r.json()
-            assert data["status"] == "ok"
-            assert data["sd_server_url"] == "http://mock-sd-server:1234"
-
-    @respx.mock
-    def test_status_when_backend_unreachable(self) -> None:
-        """Test status endpoint when sd-server is not reachable."""
-        respx.get("http://mock-sd-server:1234/").mock(side_effect=httpx.ConnectError("Connection refused"))
-
-        with TestClient(create_app(sd_server_url="http://mock-sd-server:1234")) as client:
-            r = client.get("/status")
-            assert r.status_code == 200
-            data = r.json()
-            assert data["status"] == "error"
-            assert "Connection refused" in data["error"]
-
-
-class TestProxy:
-    def test_proxy_forwards_request(self, api: TestClient) -> None:
-        """Test proxy forwards GET requests to backend."""
-        upstream_response = httpx.Response(
-            200,
-            json={"data": [{"id": "model-1"}]},
-            headers={"content-type": "application/json"},
-        )
-        mock_client = AsyncMock()
-        mock_client.request.return_value = upstream_response
-        api.app.state.client = mock_client  # type: ignore[attr-defined]
-        api.app.state.sd_server_url = "http://mock-sd-server:1234"  # type: ignore[attr-defined]
-
-        r = api.get("/v1/models")
+    def test_status_ok(self, api: TestClient) -> None:
+        """Test status endpoint returns ok."""
+        r = api.get("/status")
         assert r.status_code == 200
-        assert r.json() == {"data": [{"id": "model-1"}]}
-        mock_client.request.assert_called_once()
-
-    def test_proxy_forwards_post_with_body(self, api: TestClient) -> None:
-        """Test proxy forwards POST requests with body."""
-        upstream_response = httpx.Response(200, json={"ok": True})
-        mock_client = AsyncMock()
-        mock_client.request.return_value = upstream_response
-        api.app.state.client = mock_client  # type: ignore[attr-defined]
-        api.app.state.sd_server_url = "http://mock-sd-server:1234"  # type: ignore[attr-defined]
-
-        r = api.post("/sdapi/v1/txt2img", json={"prompt": "hello"})
-        assert r.status_code == 200
-        mock_client.request.assert_called_once()
-
-    def test_proxy_503_on_connect_error(self, api: TestClient) -> None:
-        """Test proxy returns 503 when backend is unreachable."""
-        mock_client = AsyncMock()
-        mock_client.request.side_effect = httpx.ConnectError("Connection refused")
-        api.app.state.client = mock_client  # type: ignore[attr-defined]
-        api.app.state.sd_server_url = "http://mock-sd-server:1234"  # type: ignore[attr-defined]
-
-        r = api.get("/v1/models")
-        assert r.status_code == 503
-        assert "Cannot connect" in r.json()["error"]
-
-    def test_proxy_504_on_timeout(self, api: TestClient) -> None:
-        """Test proxy returns 504 on timeout."""
-        mock_client = AsyncMock()
-        mock_client.request.side_effect = httpx.TimeoutException("Timeout")
-        api.app.state.client = mock_client  # type: ignore[attr-defined]
-        api.app.state.sd_server_url = "http://mock-sd-server:1234"  # type: ignore[attr-defined]
-
-        r = api.get("/v1/models")
-        assert r.status_code == 504
-        assert "Timeout" in r.json()["error"]
+        data = r.json()
+        assert data["status"] == "ok"
 
 
 # =============================================================================
