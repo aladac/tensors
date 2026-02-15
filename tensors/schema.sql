@@ -218,6 +218,52 @@ CREATE TABLE IF NOT EXISTS image_resources (
 CREATE INDEX IF NOT EXISTS idx_image_resources_image ON image_resources(image_id);
 
 -- ============================================================================
+-- HuggingFace Cache Tables
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS hf_models (
+    id INTEGER PRIMARY KEY,
+    repo_id TEXT NOT NULL UNIQUE,
+    author TEXT,
+    model_name TEXT NOT NULL,
+    pipeline_tag TEXT,
+    library_name TEXT,
+    downloads INTEGER DEFAULT 0,
+    likes INTEGER DEFAULT 0,
+    trending_score REAL,
+    is_private INTEGER DEFAULT 0,
+    is_gated INTEGER DEFAULT 0,
+    last_modified TEXT,
+    created_at TEXT,
+    cached_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_hf_models_repo ON hf_models(repo_id);
+CREATE INDEX IF NOT EXISTS idx_hf_models_author ON hf_models(author);
+CREATE INDEX IF NOT EXISTS idx_hf_models_downloads ON hf_models(downloads);
+
+CREATE TABLE IF NOT EXISTS hf_model_tags (
+    hf_model_id INTEGER NOT NULL,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (hf_model_id, tag),
+    FOREIGN KEY (hf_model_id) REFERENCES hf_models(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_hf_model_tags_model ON hf_model_tags(hf_model_id);
+
+CREATE TABLE IF NOT EXISTS hf_safetensor_files (
+    id INTEGER PRIMARY KEY,
+    hf_model_id INTEGER NOT NULL,
+    filename TEXT NOT NULL,
+    size_bytes INTEGER,
+    FOREIGN KEY (hf_model_id) REFERENCES hf_models(id) ON DELETE CASCADE,
+    UNIQUE(hf_model_id, filename)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hf_files_model ON hf_safetensor_files(hf_model_id);
+
+-- ============================================================================
 -- Views
 -- ============================================================================
 
@@ -236,6 +282,24 @@ SELECT
 FROM models m
 LEFT JOIN creators c ON m.creator_id = c.id
 LEFT JOIN model_versions mv ON mv.model_id = m.id AND mv.version_index = 0;
+
+CREATE VIEW IF NOT EXISTS v_hf_models AS
+SELECT
+    hm.id,
+    hm.repo_id,
+    hm.author,
+    hm.model_name,
+    hm.pipeline_tag,
+    hm.downloads,
+    hm.likes,
+    hm.is_gated,
+    hm.last_modified,
+    GROUP_CONCAT(DISTINCT hmt.tag) as tags,
+    COUNT(DISTINCT hsf.id) as safetensor_count
+FROM hf_models hm
+LEFT JOIN hf_model_tags hmt ON hm.id = hmt.hf_model_id
+LEFT JOIN hf_safetensor_files hsf ON hm.id = hsf.hf_model_id
+GROUP BY hm.id;
 
 CREATE VIEW IF NOT EXISTS v_local_files_full AS
 SELECT

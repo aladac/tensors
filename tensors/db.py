@@ -583,6 +583,166 @@ class Database:
         return [row["word"] for row in cur.fetchall()]
 
     # =========================================================================
+    # HuggingFace Cache Operations
+    # =========================================================================
+
+    def cache_hf_model(self, data: dict[str, Any]) -> int:
+        """Cache HuggingFace model data.
+
+        Args:
+            data: Model data dict with keys like repo_id, author, downloads, etc.
+
+        Returns the internal model ID.
+        """
+        cur = self.conn.cursor()
+
+        repo_id = data.get("repo_id") or data.get("id") or data.get("modelId")
+        if not repo_id:
+            raise ValueError("repo_id is required")
+
+        # Parse author from repo_id if not provided
+        author = data.get("author")
+        model_name = repo_id
+        if "/" in repo_id:
+            parts = repo_id.split("/", 1)
+            author = author or parts[0]
+            model_name = parts[1]
+
+        # Check if model exists
+        cur.execute("SELECT id FROM hf_models WHERE repo_id = ?", (repo_id,))
+        existing = cur.fetchone()
+
+        if existing:
+            model_id = int(existing["id"])
+            cur.execute(
+                """
+                UPDATE hf_models SET
+                    author = ?, model_name = ?, pipeline_tag = ?, library_name = ?,
+                    downloads = ?, likes = ?, trending_score = ?,
+                    is_private = ?, is_gated = ?, last_modified = ?,
+                    updated_at = datetime('now')
+                WHERE id = ?
+                """,
+                (
+                    author,
+                    model_name,
+                    data.get("pipeline_tag"),
+                    data.get("library_name"),
+                    data.get("downloads", 0),
+                    data.get("likes", 0),
+                    data.get("trending_score"),
+                    1 if data.get("private") else 0,
+                    1 if data.get("gated") else 0,
+                    data.get("last_modified") or data.get("lastModified"),
+                    model_id,
+                ),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO hf_models (
+                    repo_id, author, model_name, pipeline_tag, library_name,
+                    downloads, likes, trending_score, is_private, is_gated,
+                    last_modified, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    repo_id,
+                    author,
+                    model_name,
+                    data.get("pipeline_tag"),
+                    data.get("library_name"),
+                    data.get("downloads", 0),
+                    data.get("likes", 0),
+                    data.get("trending_score"),
+                    1 if data.get("private") else 0,
+                    1 if data.get("gated") else 0,
+                    data.get("last_modified") or data.get("lastModified"),
+                    data.get("created_at") or data.get("createdAt"),
+                ),
+            )
+            model_id = cur.lastrowid or 0
+
+        # Cache tags
+        for tag in data.get("tags", []):
+            cur.execute(
+                "INSERT OR IGNORE INTO hf_model_tags (hf_model_id, tag) VALUES (?, ?)",
+                (model_id, tag),
+            )
+
+        # Cache safetensor files
+        for file_info in data.get("safetensor_files", []):
+            if isinstance(file_info, str):
+                cur.execute(
+                    "INSERT OR IGNORE INTO hf_safetensor_files (hf_model_id, filename) VALUES (?, ?)",
+                    (model_id, file_info),
+                )
+            elif isinstance(file_info, dict):
+                cur.execute(
+                    """
+                    INSERT OR IGNORE INTO hf_safetensor_files (hf_model_id, filename, size_bytes)
+                    VALUES (?, ?, ?)
+                    """,
+                    (model_id, file_info.get("filename"), file_info.get("size")),
+                )
+
+        self.conn.commit()
+        return model_id
+
+    def search_hf_models(
+        self,
+        query: str | None = None,
+        author: str | None = None,
+        pipeline_tag: str | None = None,
+        limit: int = 20,
+    ) -> list[dict[str, Any]]:
+        """Search cached HuggingFace models."""
+        cur = self.conn.cursor()
+
+        sql = "SELECT * FROM v_hf_models WHERE 1=1"
+        params: list[Any] = []
+
+        if query:
+            sql += " AND (repo_id LIKE ? OR model_name LIKE ?)"
+            params.extend([f"%{query}%", f"%{query}%"])
+
+        if author:
+            sql += " AND author = ?"
+            params.append(author)
+
+        if pipeline_tag:
+            sql += " AND pipeline_tag = ?"
+            params.append(pipeline_tag)
+
+        sql += " ORDER BY downloads DESC LIMIT ?"
+        params.append(limit)
+
+        cur.execute(sql, params)
+        return [dict(row) for row in cur.fetchall()]
+
+    def get_hf_model(self, repo_id: str) -> dict[str, Any] | None:
+        """Get cached HF model by repo_id."""
+        cur = self.conn.cursor()
+        cur.execute("SELECT * FROM v_hf_models WHERE repo_id = ?", (repo_id,))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+    def get_hf_safetensor_files(self, repo_id: str) -> list[dict[str, Any]]:
+        """Get safetensor files for an HF model."""
+        cur = self.conn.cursor()
+        cur.execute(
+            """
+            SELECT hsf.filename, hsf.size_bytes
+            FROM hf_safetensor_files hsf
+            JOIN hf_models hm ON hsf.hf_model_id = hm.id
+            WHERE hm.repo_id = ?
+            ORDER BY hsf.filename
+            """,
+            (repo_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+    # =========================================================================
     # Statistics
     # =========================================================================
 
@@ -598,6 +758,8 @@ class Database:
             "trained_words",
             "creators",
             "tags",
+            "hf_models",
+            "hf_safetensor_files",
         ]:
             cur.execute(f"SELECT COUNT(*) FROM {table}")
             stats[table] = cur.fetchone()[0]

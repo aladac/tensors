@@ -29,6 +29,7 @@ from tensors.config import (
 from tensors.config import (
     SortOrder as SortOrderEnum,
 )
+from tensors.db import Database
 from tensors.hf import search_hf_models
 
 logger = logging.getLogger(__name__)
@@ -151,6 +152,14 @@ async def search_models(
 
         if hf_results:
             results["huggingface"] = hf_results
+            # Cache HF models
+            try:
+                with Database() as db:
+                    db.init_schema()
+                    for model_data in hf_results:
+                        db.cache_hf_model(model_data)
+            except Exception as e:
+                logger.warning("Failed to cache HF search results: %s", e)
 
     return results
 
