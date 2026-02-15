@@ -253,8 +253,7 @@ def _check_auth(comfy_session: str | None, path: str = "", method: str = "GET") 
         return
 
     # Allow static assets without auth (modulepreload doesn't send cookies)
-    static_extensions = {".js", ".css", ".woff", ".woff2", ".ttf", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".json"}
-    if any(path.lower().endswith(ext) for ext in static_extensions):
+    if path.startswith("assets/"):
         return
 
     if not _verify_session_token(comfy_session):
