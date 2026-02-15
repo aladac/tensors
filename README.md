@@ -1,12 +1,21 @@
-[![Static Badge](https://img.shields.io/badge/pip_install-tensors-blue)](https://pypi.org/project/tensors)
+<p align="center">
+  <img src="icon.svg" alt="tensors" width="96" height="96">
+</p>
 
-# tensors
+<h1 align="center">tensors</h1>
 
-A CLI tool for working with safetensor files, CivitAI models, and stable-diffusion.cpp image generation. Supports both local and remote server modes.
+<p align="center">
+  <a href="https://pypi.org/project/tensors"><img src="https://img.shields.io/pypi/v/tensors?color=blue" alt="PyPI"></a>
+  <img src="https://img.shields.io/badge/coverage-73%25-brightgreen" alt="Coverage">
+  <img src="https://img.shields.io/badge/python-3.12+-blue" alt="Python">
+  <a href="https://github.com/saiden-dev/tensors/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
+</p>
+
+<p align="center">
+  A CLI tool for working with safetensor files, CivitAI models, and stable-diffusion.cpp image generation.
+</p>
 
 ## Features
-
-https://github.com/user-attachments/assets/2e7629b4-34e7-4cbc-b50e-31d7fdd30239
 
 - **Read safetensor metadata** - Parse headers, count tensors, extract embedded metadata
 - **CivitAI integration** - Search models, fetch info, identify files by hash

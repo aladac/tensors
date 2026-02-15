@@ -40,7 +40,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="tensors",
         description="API for CivitAI model management and image gallery",
-        version="0.1.17",
+        version="0.1.18",
         lifespan=lifespan,
         docs_url=None,
         redoc_url=None,
