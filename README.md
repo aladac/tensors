@@ -6,13 +6,13 @@
 
 <p align="center">
   <a href="https://pypi.org/project/tensors"><img src="https://img.shields.io/pypi/v/tensors?color=blue" alt="PyPI"></a>
-  <img src="https://img.shields.io/badge/coverage-73%25-brightgreen" alt="Coverage">
+  <img src="https://img.shields.io/badge/coverage-50%25-yellow" alt="Coverage">
   <img src="https://img.shields.io/badge/python-3.12+-blue" alt="Python">
   <a href="https://github.com/saiden-dev/tensors/blob/master/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="License"></a>
 </p>
 
 <p align="center">
-  A CLI tool for working with safetensor files, CivitAI models, and stable-diffusion.cpp image generation.
+  A CLI tool for working with safetensor files, CivitAI models, and image generation via ComfyUI or stable-diffusion.cpp.
 </p>
 
 ## Features
@@ -21,8 +21,9 @@
 - **CivitAI integration** - Search models, fetch info, identify files by hash
 - **Download models** - Resume support, type-based default paths
 - **Hash verification** - SHA256 computation with progress display
+- **ComfyUI integration** - Generate images via ComfyUI with CLI and API
 - **Image generation** - txt2img/img2img via stable-diffusion.cpp server
-- **Server wrapper** - FastAPI wrapper for sd-server with hot reload
+- **Server wrapper** - FastAPI wrapper with ComfyUI proxy and hot reload
 - **Models database** - SQLite cache for local files and CivitAI metadata
 - **Image gallery** - Manage generated images with metadata
 - **Remote mode** - Control remote tsr servers via `--remote` flag
@@ -140,7 +141,44 @@ tsr info model.safetensors -j
 tsr info model.safetensors --save-to ./metadata
 ```
 
-### Generate Images
+### Generate Images (ComfyUI)
+
+Generate images via ComfyUI backend.
+
+```bash
+# Check ComfyUI status
+tsr comfy status
+
+# List available models
+tsr comfy models
+
+# Generate an image
+tsr comfy generate "a cat sitting on a windowsill"
+
+# With model and options
+tsr comfy generate "sunset over mountains" \
+  -m dreamshaper_8.safetensors \
+  -W 1024 -H 1024 \
+  --steps 20 --cfg 7.0
+
+# With negative prompt and seed
+tsr comfy generate "portrait" \
+  -n "blurry, low quality" \
+  --seed 42
+
+# Run arbitrary workflow
+tsr comfy run workflow.json
+
+# Queue management
+tsr comfy queue           # View queue
+tsr comfy queue --clear   # Clear queue
+
+# View generation history
+tsr comfy history
+tsr comfy history PROMPT_ID
+```
+
+### Generate Images (sd.cpp)
 
 Requires a running [stable-diffusion.cpp](https://github.com/leejet/stable-diffusion.cpp) server.
 
@@ -288,12 +326,27 @@ local = "http://localhost:51200"
 
 # Optional: set default remote for all commands
 default_remote = "junkpile"
+
+[comfyui]
+url = "http://127.0.0.1:8188"
+default_model = "dreamshaper_8.safetensors"
+width = 1024
+height = 1024
+steps = 20
+cfg = 7.0
+sampler = "euler"
+scheduler = "normal"
+
+[paths]
+checkpoints = "/path/to/models/checkpoints"
+loras = "/path/to/models/loras"
 ```
 
-Or set API keys via environment variables:
+Or set via environment variables:
 ```bash
 export CIVITAI_API_KEY="your-api-key"      # For CivitAI API access
 export TENSORS_API_KEY="your-server-key"   # For server authentication
+export COMFYUI_URL="http://127.0.0.1:8188" # ComfyUI backend URL
 ```
 
 ## Default Paths
@@ -336,7 +389,22 @@ Data is stored in XDG-compliant paths:
 | `--all` | Download all safetensor files |
 | `-o, --output` | Output directory |
 
-## Generate Options
+## ComfyUI Generate Options
+
+| Option | Description |
+|--------|-------------|
+| `-m, --model` | Checkpoint model name |
+| `-W, --width` | Image width (default: 1024) |
+| `-H, --height` | Image height (default: 1024) |
+| `--steps` | Sampling steps (default: 20) |
+| `--cfg` | CFG scale (default: 7.0) |
+| `--seed` | RNG seed, -1 for random (default: -1) |
+| `-n, --negative` | Negative prompt |
+| `-o, --output` | Output path |
+| `--sampler` | Sampler name (default: euler) |
+| `--scheduler` | Scheduler name (default: normal) |
+
+## sd.cpp Generate Options
 
 | Option | Description |
 |--------|-------------|
@@ -378,8 +446,16 @@ When running `tsr serve`, the following endpoints are available:
 | `/api/models/active` | GET | Get active model |
 | `/api/models/switch` | POST | Switch model |
 | `/api/models/loras` | GET | List available LoRAs |
-| `/api/generate` | POST | Generate images |
+| `/api/generate` | POST | Generate images (sd.cpp) |
 | `/api/download` | POST | Start CivitAI download |
+| `/api/comfyui/status` | GET | ComfyUI system stats |
+| `/api/comfyui/queue` | GET | ComfyUI queue status |
+| `/api/comfyui/queue` | DELETE | Clear ComfyUI queue |
+| `/api/comfyui/models` | GET | List ComfyUI models |
+| `/api/comfyui/history` | GET | ComfyUI generation history |
+| `/api/comfyui/history/{id}` | GET | Get specific history entry |
+| `/api/comfyui/generate` | POST | Generate image via ComfyUI |
+| `/api/comfyui/workflow` | POST | Run arbitrary ComfyUI workflow |
 | `/api/db/files` | GET | List local files |
 | `/api/db/models` | GET | Search cached models |
 | `/api/db/stats` | GET | Database statistics |
