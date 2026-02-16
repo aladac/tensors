@@ -45,8 +45,16 @@ run(<<~CMD.gsub("\n", " ").strip)
 CMD
 
 puts ""
+puts "==> Syncing pyproject.toml and uv.lock..."
+run(%(rsync -av --rsync-path="sudo rsync" #{LOCAL_DIR}/pyproject.toml #{LOCAL_DIR}/uv.lock #{REMOTE}:#{REMOTE_DIR}/))
+
+puts ""
 puts "==> Fixing permissions..."
 ssh("sudo chown -R tensors:tensors #{REMOTE_DIR} && sudo chmod -R g+w #{REMOTE_DIR}")
+
+puts ""
+puts "==> Syncing dependencies with uv..."
+ssh("cd #{REMOTE_DIR} && uv sync --extra server")
 
 puts ""
 puts "==> Restarting tensors service..."
