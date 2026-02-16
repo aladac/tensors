@@ -1,67 +1,83 @@
-# TODO: tsr Server/Client Architecture
+# TODO: ComfyUI CLI & API Integration
 
-## Phase 1: Model-Specific Docker Images (SKIPPED)
-- [x] Step 1.1: ~~Create `rocm-docker/model-defaults.toml`~~ (skipped)
-- [x] Step 1.2: ~~Parameterize `Dockerfile.sd-server`~~ (skipped)
-- [x] Step 1.3: ~~Create `rocm-docker/build-all.sh`~~ (skipped)
+## Phase 1: Core Client (`tensors/comfyui.py`)
+- [ ] Step 1.1: Create ComfyUI client module with basic query functions
+  - `get_system_stats()` - System stats (GPU, RAM)
+  - `get_queue_status()` - Queue status
+  - `get_loaded_models()` - List loaded checkpoints/loras
+  - `get_history()` - View history
+- [ ] Step 1.2: Add workflow execution with WebSocket progress tracking
+  - `queue_prompt()` - Queue a workflow
+  - `run_workflow()` - Run workflow with progress callback
+- [ ] Step 1.3: Add simple text-to-image generation
+  - `generate_image()` - Text-to-image with embedded workflow template
+  - Include SDXL/Flux-compatible default workflow
 
-## Phase 2: Models Database in tensors
-- [x] Step 2.1: Create `tensors/db.py` + `tensors/schema.sql` (SQLite wrapper, schema, CRUD)
-- [x] Step 2.2: Add `tsr db` CLI commands (scan, link, cache, list, search, triggers, stats)
-- [x] Step 2.3: Add `/api/db/*` endpoints (files, models, triggers, scan, link, cache, stats)
+## Phase 2: CLI Commands (`tensors/cli.py`)
+- [ ] Step 2.1: Add `comfy` subcommand group with status commands
+  - `tsr comfy status` - System stats
+  - `tsr comfy queue` - Queue status
+  - `tsr comfy queue --clear` - Clear queue
+  - `tsr comfy models` - List loaded models
+  - `tsr comfy history [PROMPT_ID]` - View history
+- [ ] Step 2.2: Add generation commands
+  - `tsr comfy generate "prompt"` - Simple text-to-image
+  - `tsr comfy run workflow.json` - Run arbitrary workflow
+  - Rich progress bar for generation
 
-## Phase 3: Enhanced Server API
-- [x] Step 3.1: Add `/api/images` gallery endpoints (list, get, delete, edit)
-- [x] Step 3.2: Add `/api/models` endpoints (list, active, switch, loras)
-- [x] Step 3.3: Add `/api/download` endpoint (CivitAI proxy download)
-- [x] Step 3.4: Enhance `/api/generate` (gallery integration, full params)
+## Phase 3: Server API Routes (`tensors/server/comfyui_api_routes.py`)
+- [ ] Step 3.1: Create new router with query endpoints
+  - `GET /api/comfyui/status` - System stats
+  - `GET /api/comfyui/queue` - Queue status
+  - `DELETE /api/comfyui/queue` - Clear queue
+  - `GET /api/comfyui/models` - List loaded models
+  - `GET /api/comfyui/history` - List history
+  - `GET /api/comfyui/history/{prompt_id}` - Get specific result
+- [ ] Step 3.2: Add generation endpoints
+  - `POST /api/comfyui/generate` - Text-to-image generation
+  - `POST /api/comfyui/workflow` - Run arbitrary workflow
+- [ ] Step 3.3: Register router in server/__init__.py
 
-## Phase 4: Client Mode for tsr CLI
-- [x] Step 4.1: Create `tensors/client.py` (TsrClient HTTP wrapper)
-- [x] Step 4.2: Add `[remotes]` config section + `--remote` flag support
-- [x] Step 4.3: Update CLI commands with `--remote` support (generate, images, models, dl, db)
-
-## Phase 5: Docker Deployment Automation (SKIPPED)
-- [x] Step 5.1: ~~Create `rocm-docker/docker-compose.yml`~~ (skipped)
-- [x] Step 5.2: ~~Create `rocm-docker/deploy.sh`~~ (skipped)
-- [x] Step 5.3: ~~Create `rocm-docker/tsr-server.service`~~ (skipped)
-
-## Phase 6: Tests
-- [x] Step 6.1: `tests/test_db.py` (database module tests)
-- [x] Step 6.2: `tests/test_server.py` (API endpoint tests)
-- [x] Step 6.3: `tests/test_client.py` (client module tests)
+## Phase 4: Configuration (`tensors/config.py`)
+- [ ] Step 4.1: Add ComfyUI config functions
+  - `get_comfyui_url()` - Get ComfyUI backend URL
+  - `get_comfyui_defaults()` - Get default generation settings
+  - Environment variable: `COMFYUI_URL`
+  - Config section: `[comfyui]`
 
 ---
 
-## Quick Reference
+## Architecture Reference
 
-### ROCm Docker Run (Unrestricted)
-```bash
-docker run -d --name sd-server \
-  --privileged \
-  --device=/dev/kfd \
-  --device=/dev/dri \
-  --group-add video \
-  --ipc=host \
-  --shm-size=8G \
-  -v /path/to/models:/models \
-  -p 1234:1234 \
-  -e MODEL=/models/model.safetensors \
-  sd-server:rocm
+```
+tensors/
+├── comfyui.py              # Core client (NEW) - shared by CLI and server
+├── cli.py                  # Add `tsr comfy` subcommands
+└── server/
+    ├── comfyui_routes.py       # Existing proxy (unchanged)
+    └── comfyui_api_routes.py   # New programmatic API routes (NEW)
 ```
 
-### sd-server API Endpoints
-- `POST /sdapi/v1/txt2img` — Generate image (A1111 compatible)
-- `POST /sdapi/v1/img2img` — Edit image
-- `GET /sdapi/v1/loras` — List LoRAs
-- `GET /sdapi/v1/samplers` — List samplers
-- `GET /sdapi/v1/schedulers` — List schedulers
+## CLI Commands
 
-### Model Family Defaults (from models.md)
-| Family | Resolution | Steps | CFG | Sampler | Scheduler |
-|--------|------------|-------|-----|---------|-----------|
-| SD 1.5 | 512×512 | 20-30 | 7-8 | DPM++ 2M | Karras |
-| SDXL | 1024×1024 | 25-30 | 5-7 | DPM++ 2M | Karras |
-| Pony | 1024×1024 | 25-30 | 5-7 | Euler a | simple |
-| Illustrious | 1024×1024 | 25-30 | 5-7 | Euler a | simple |
-| Flux | 1024×1024 | 20-30 | 1-3 | Euler | simple |
+```
+tsr comfy status              # System stats (GPU, RAM, queue)
+tsr comfy queue               # Current queue status
+tsr comfy queue --clear       # Clear queue
+tsr comfy models              # List loaded checkpoints/loras
+tsr comfy history [PROMPT_ID] # View history or specific result
+tsr comfy generate "prompt"   # Simple text-to-image
+tsr comfy run workflow.json   # Run arbitrary workflow
+```
+
+## Generate Options
+
+```
+tsr comfy generate "a cat" \
+  -n "blurry, bad" \           # negative prompt
+  -m "flux1-dev-fp8.safetensors" \  # model
+  -W 1024 -H 1024 \            # dimensions
+  --steps 20 --cfg 7.0 \       # sampling
+  --seed 42 \                  # reproducibility
+  -o ./output.png              # output path
+```
