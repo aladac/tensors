@@ -5,5 +5,9 @@
       "Bash(ls:*)",
       "Bash(git add:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "browse"
+  ],
+  "enableAllProjectMcpServers": true
 }
