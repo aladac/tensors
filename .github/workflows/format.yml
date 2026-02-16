@@ -1,0 +1,44 @@
+name: format
+
+on:
+  workflow_run:
+    workflows: [style]
+    types: [completed]
+    branches: [master, main]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    name: format
+    runs-on: ubuntu-latest
+    environment: format
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Run ruff format
+        run: ruff format .
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "format: auto-format code [skip ci]"
+            git push
+          fi

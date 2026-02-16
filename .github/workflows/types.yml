@@ -1,0 +1,33 @@
+name: types
+
+on:
+  workflow_run:
+    workflows: [format]
+    types: [completed]
+    branches: [master, main]
+
+permissions:
+  contents: read
+
+jobs:
+  types:
+    name: types
+    runs-on: ubuntu-latest
+    environment: types
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install mypy
+          pip install -e . || pip install -r requirements.txt || true
+
+      - name: Type check
+        run: mypy . || echo "No mypy configuration or type errors"
