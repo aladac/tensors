@@ -1,17 +1,18 @@
 # TODO: ComfyUI CLI & API Integration
 
 ## Phase 1: Core Client (`tensors/comfyui.py`)
-- [ ] Step 1.1: Create ComfyUI client module with basic query functions
+- [x] Step 1.1: Create ComfyUI client module with basic query functions
   - `get_system_stats()` - System stats (GPU, RAM)
   - `get_queue_status()` - Queue status
   - `get_loaded_models()` - List loaded checkpoints/loras
   - `get_history()` - View history
-- [ ] Step 1.2: Add workflow execution with WebSocket progress tracking
+  - Also: `clear_queue()`, `get_object_info()`, `get_image()`
+- [x] Step 1.2: Add workflow execution with WebSocket progress tracking
   - `queue_prompt()` - Queue a workflow
-  - `run_workflow()` - Run workflow with progress callback
-- [ ] Step 1.3: Add simple text-to-image generation
+  - `run_workflow()` - Run workflow with progress callback (uses polling)
+- [x] Step 1.3: Add simple text-to-image generation
   - `generate_image()` - Text-to-image with embedded workflow template
-  - Include SDXL/Flux-compatible default workflow
+  - Include SDXL/Flux-compatible default workflow (DEFAULT_WORKFLOW_TEMPLATE)
 
 ## Phase 2: CLI Commands (`tensors/cli.py`)
 - [ ] Step 2.1: Add `comfy` subcommand group with status commands
