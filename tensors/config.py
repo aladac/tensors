@@ -486,3 +486,99 @@ def get_server_api_key() -> str | None:
             return str(key)
 
     return None
+
+
+# ============================================================================
+# ComfyUI Configuration
+# ============================================================================
+
+COMFYUI_DEFAULT_URL = "http://127.0.0.1:8188"
+
+# Default generation parameters
+COMFYUI_DEFAULT_WIDTH = 1024
+COMFYUI_DEFAULT_HEIGHT = 1024
+COMFYUI_DEFAULT_STEPS = 20
+COMFYUI_DEFAULT_CFG = 7.0
+COMFYUI_DEFAULT_SAMPLER = "euler"
+COMFYUI_DEFAULT_SCHEDULER = "normal"
+
+
+def get_comfyui_url() -> str:
+    """Get the ComfyUI server URL.
+
+    Resolution order:
+    1. COMFYUI_URL environment variable
+    2. config.toml [comfyui].url
+    3. Default: http://127.0.0.1:8188
+
+    Config example:
+        [comfyui]
+        url = "http://192.168.1.100:8188"
+    """
+    # Check environment variable first
+    env_url = os.environ.get("COMFYUI_URL")
+    if env_url:
+        return env_url
+
+    # Check config file
+    config = load_config()
+    comfyui_config = config.get("comfyui", {})
+    if isinstance(comfyui_config, dict):
+        url = comfyui_config.get("url")
+        if url:
+            return str(url)
+
+    return COMFYUI_DEFAULT_URL
+
+
+def get_comfyui_defaults() -> dict[str, Any]:
+    """Get default ComfyUI generation parameters.
+
+    Resolution order (per parameter):
+    1. config.toml [comfyui] section values
+    2. Built-in defaults
+
+    Config example:
+        [comfyui]
+        url = "http://127.0.0.1:8188"
+        default_model = "flux1-dev-fp8.safetensors"
+        width = 1024
+        height = 1024
+        steps = 20
+        cfg = 7.0
+        sampler = "euler"
+        scheduler = "normal"
+
+    Returns dict with keys: model, width, height, steps, cfg, sampler, scheduler
+    """
+    config = load_config()
+    comfyui_config = config.get("comfyui", {})
+
+    defaults: dict[str, Any] = {
+        "model": None,
+        "width": COMFYUI_DEFAULT_WIDTH,
+        "height": COMFYUI_DEFAULT_HEIGHT,
+        "steps": COMFYUI_DEFAULT_STEPS,
+        "cfg": COMFYUI_DEFAULT_CFG,
+        "sampler": COMFYUI_DEFAULT_SAMPLER,
+        "scheduler": COMFYUI_DEFAULT_SCHEDULER,
+    }
+
+    if isinstance(comfyui_config, dict):
+        # Override with config values if present
+        if "default_model" in comfyui_config:
+            defaults["model"] = str(comfyui_config["default_model"])
+        if "width" in comfyui_config:
+            defaults["width"] = int(comfyui_config["width"])
+        if "height" in comfyui_config:
+            defaults["height"] = int(comfyui_config["height"])
+        if "steps" in comfyui_config:
+            defaults["steps"] = int(comfyui_config["steps"])
+        if "cfg" in comfyui_config:
+            defaults["cfg"] = float(comfyui_config["cfg"])
+        if "sampler" in comfyui_config:
+            defaults["sampler"] = str(comfyui_config["sampler"])
+        if "scheduler" in comfyui_config:
+            defaults["scheduler"] = str(comfyui_config["scheduler"])
+
+    return defaults

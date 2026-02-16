@@ -40,11 +40,12 @@
 - [x] Step 3.3: Register router in server/__init__.py (with API key auth)
 
 ## Phase 4: Configuration (`tensors/config.py`)
-- [ ] Step 4.1: Add ComfyUI config functions
-  - `get_comfyui_url()` - Get ComfyUI backend URL
-  - `get_comfyui_defaults()` - Get default generation settings
+- [x] Step 4.1: Add ComfyUI config functions
+  - `get_comfyui_url()` - Get ComfyUI backend URL (COMFYUI_URL env -> config -> default)
+  - `get_comfyui_defaults()` - Get default generation settings from config
   - Environment variable: `COMFYUI_URL`
-  - Config section: `[comfyui]`
+  - Config section: `[comfyui]` with url, default_model, width, height, steps, cfg, sampler, scheduler
+  - Updated `comfyui.py` to use config functions
 
 ---
 

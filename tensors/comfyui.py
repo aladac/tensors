@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import copy
 import json
-import os
 import random
 import time
 import uuid
@@ -17,19 +16,18 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
+from tensors.config import get_comfyui_url
+
 if TYPE_CHECKING:
     from rich.console import Console
-
-# Default ComfyUI URL (same as comfyui_routes.py)
-COMFYUI_DEFAULT_URL = "http://127.0.0.1:8188"
 
 # Progress update throttle interval (seconds)
 _PROGRESS_UPDATE_INTERVAL = 0.25
 
 
 def _get_comfyui_url() -> str:
-    """Get ComfyUI URL from environment or default."""
-    return os.environ.get("COMFYUI_URL", COMFYUI_DEFAULT_URL)
+    """Get ComfyUI URL from config (env var -> config file -> default)."""
+    return get_comfyui_url()
 
 
 # ============================================================================
