@@ -5,7 +5,7 @@ Deploy tensors API server to junkpile.
 Run the deploy script:
 
 ```bash
-./scripts/deploy.sh
+ruby scripts/deploy.rb
 ```
 
 ## What it does
@@ -14,6 +14,7 @@ Run the deploy script:
 2. **Fix permissions** - Sets ownership to `tensors:tensors`
 3. **Restart tensors** - Runs `sudo systemctl restart tensors`
 4. **Verify tensors** - Checks service is running
+5. **Health check** - Verifies API responds
 
 ## Service Structure
 
