@@ -57,6 +57,11 @@ from tensors.safetensor import compute_sha256, get_base_name, read_safetensor_me
 # Key masking threshold
 MIN_KEY_LENGTH_FOR_MASKING = 8
 
+# Display truncation limits
+MAX_QUEUE_DISPLAY = 10
+MAX_MODEL_LIST_DISPLAY = 20
+MAX_PROMPT_ID_DISPLAY = 36
+
 
 def _cache_model_quietly(model_data: dict[str, Any]) -> None:
     """Cache model data to database without output."""
@@ -910,6 +915,335 @@ def hf_download(
         raise typer.Exit(1)
 
 
+# =============================================================================
+# ComfyUI Commands
+# =============================================================================
+
+comfy_app = typer.Typer(name="comfy", help="ComfyUI integration for image generation.")
+app.add_typer(comfy_app)
+
+
+@comfy_app.command("status")
+def comfy_status(
+    url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """Show ComfyUI system status (GPU, RAM, queue)."""
+    from tensors.comfyui import get_queue_status, get_system_stats  # noqa: PLC0415
+
+    stats = get_system_stats(url=url, console=console if not json_output else None)
+    if not stats:
+        console.print("[red]Error: Could not connect to ComfyUI[/red]")
+        raise typer.Exit(1)
+
+    queue = get_queue_status(url=url)
+
+    if json_output:
+        output = {"system": stats, "queue": queue}
+        console.print_json(data=output)
+        return
+
+    # Display system stats
+    console.print("[bold cyan]ComfyUI System Status[/bold cyan]")
+    console.print()
+
+    # System info
+    system_info = stats.get("system", {})
+    console.print(f"[bold]OS:[/bold] {system_info.get('os', 'N/A')}")
+    console.print(f"[bold]Python:[/bold] {system_info.get('python_version', 'N/A')}")
+    console.print(f"[bold]PyTorch:[/bold] {system_info.get('pytorch_version', 'N/A')}")
+
+    # GPU info
+    devices = stats.get("devices", [])
+    if devices:
+        console.print()
+        console.print("[bold]GPU Devices:[/bold]")
+        for i, device in enumerate(devices):
+            name = device.get("name", "Unknown")
+            vram_total = device.get("vram_total", 0)
+            vram_free = device.get("vram_free", 0)
+            vram_used = vram_total - vram_free
+            vram_pct = (vram_used / vram_total * 100) if vram_total > 0 else 0
+            console.print(f"  [{i}] {name}")
+            console.print(f"      VRAM: {vram_used / 1024**3:.1f} / {vram_total / 1024**3:.1f} GB ({vram_pct:.0f}%)")
+
+    # Queue info
+    if queue:
+        running = len(queue.get("queue_running", []))
+        pending = len(queue.get("queue_pending", []))
+        console.print()
+        console.print(f"[bold]Queue:[/bold] {running} running, {pending} pending")
+
+
+@comfy_app.command("queue")
+def comfy_queue(
+    url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
+    clear: Annotated[bool, typer.Option("--clear", "-c", help="Clear the queue")] = False,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """Show or clear the ComfyUI queue."""
+    from tensors.comfyui import clear_queue as do_clear_queue  # noqa: PLC0415
+    from tensors.comfyui import get_queue_status  # noqa: PLC0415
+
+    if clear:
+        success = do_clear_queue(url=url, console=console)
+        if not success:
+            raise typer.Exit(1)
+        return
+
+    queue = get_queue_status(url=url, console=console if not json_output else None)
+    if not queue:
+        console.print("[red]Error: Could not connect to ComfyUI[/red]")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(data=queue)
+        return
+
+    running = queue.get("queue_running", [])
+    pending = queue.get("queue_pending", [])
+
+    console.print("[bold cyan]ComfyUI Queue[/bold cyan]")
+    console.print()
+    console.print(f"[bold]Running:[/bold] {len(running)}")
+    console.print(f"[bold]Pending:[/bold] {len(pending)}")
+
+    if running:
+        console.print()
+        console.print("[bold]Running Jobs:[/bold]")
+        for job in running:
+            prompt_id = job[1] if len(job) > 1 else "unknown"
+            console.print(f"  • {prompt_id}")
+
+    if pending:
+        console.print()
+        console.print("[bold]Pending Jobs:[/bold]")
+        for job in pending[:MAX_QUEUE_DISPLAY]:
+            prompt_id = job[1] if len(job) > 1 else "unknown"
+            console.print(f"  • {prompt_id}")
+        if len(pending) > MAX_QUEUE_DISPLAY:
+            console.print(f"  ... and {len(pending) - MAX_QUEUE_DISPLAY} more")
+
+
+@comfy_app.command("models")
+def comfy_models(
+    url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """List available models in ComfyUI."""
+    from tensors.comfyui import get_loaded_models  # noqa: PLC0415
+
+    models = get_loaded_models(url=url, console=console if not json_output else None)
+    if not models:
+        console.print("[red]Error: Could not fetch models from ComfyUI[/red]")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(data=models)
+        return
+
+    console.print("[bold cyan]ComfyUI Available Models[/bold cyan]")
+
+    for model_type, model_list in sorted(models.items()):
+        console.print()
+        console.print(f"[bold]{model_type}:[/bold] ({len(model_list)})")
+        for name in model_list[:MAX_MODEL_LIST_DISPLAY]:
+            console.print(f"  • {name}")
+        if len(model_list) > MAX_MODEL_LIST_DISPLAY:
+            console.print(f"  ... and {len(model_list) - MAX_MODEL_LIST_DISPLAY} more")
+
+
+@comfy_app.command("history")
+def comfy_history(
+    prompt_id: Annotated[str | None, typer.Argument(help="Specific prompt ID to view")] = None,
+    url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
+    limit: Annotated[int, typer.Option("-n", "--limit", help="Max history items")] = 20,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """View ComfyUI generation history."""
+    from tensors.comfyui import get_history  # noqa: PLC0415
+
+    history = get_history(url=url, prompt_id=prompt_id, max_items=limit, console=console if not json_output else None)
+    if history is None:
+        console.print("[red]Error: Could not fetch history from ComfyUI[/red]")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(data=history)
+        return
+
+    if not history:
+        console.print("[yellow]No history found.[/yellow]")
+        return
+
+    if prompt_id:
+        # Show single entry details
+        if prompt_id not in history:
+            console.print(f"[yellow]Prompt {prompt_id} not found in history.[/yellow]")
+            return
+
+        entry = history[prompt_id]
+        console.print(f"[bold cyan]Prompt: {prompt_id}[/bold cyan]")
+        console.print()
+
+        status = entry.get("status", {})
+        console.print(f"[bold]Status:[/bold] {status.get('status_str', 'unknown')}")
+
+        outputs = entry.get("outputs", {})
+        if outputs:
+            console.print()
+            console.print("[bold]Outputs:[/bold]")
+            for node_id, output in outputs.items():
+                if "images" in output:
+                    for img in output["images"]:
+                        console.print(f"  [{node_id}] {img.get('filename', 'unknown')}")
+    else:
+        # Show list of history entries
+        console.print("[bold cyan]ComfyUI History[/bold cyan]")
+        console.print()
+
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Prompt ID", style="cyan", max_width=40)
+        table.add_column("Status", style="green")
+        table.add_column("Images", justify="right")
+
+        for pid, entry in list(history.items())[:limit]:
+            status = entry.get("status", {}).get("status_str", "unknown")
+            outputs = entry.get("outputs", {})
+            image_count = sum(len(o.get("images", [])) for o in outputs.values())
+            display_pid = pid[:MAX_PROMPT_ID_DISPLAY] + "..." if len(pid) > MAX_PROMPT_ID_DISPLAY else pid
+            table.add_row(display_pid, status, str(image_count))
+
+        console.print(table)
+
+
+@comfy_app.command("generate")
+def comfy_generate(
+    prompt: Annotated[str, typer.Argument(help="Positive prompt text")],
+    url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
+    negative: Annotated[str, typer.Option("-n", "--negative", help="Negative prompt")] = "",
+    model: Annotated[str | None, typer.Option("-m", "--model", help="Checkpoint model name")] = None,
+    width: Annotated[int, typer.Option("-W", "--width", help="Image width")] = 1024,
+    height: Annotated[int, typer.Option("-H", "--height", help="Image height")] = 1024,
+    steps: Annotated[int, typer.Option("--steps", help="Sampling steps")] = 20,
+    cfg: Annotated[float, typer.Option("--cfg", help="CFG scale")] = 7.0,
+    seed: Annotated[int, typer.Option("--seed", "-s", help="Random seed (-1 for random)")] = -1,
+    sampler: Annotated[str, typer.Option("--sampler", help="Sampler name")] = "euler",
+    scheduler: Annotated[str, typer.Option("--scheduler", help="Scheduler name")] = "normal",
+    output: Annotated[Path | None, typer.Option("-o", "--output", help="Output file path")] = None,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """Generate an image with a simple text-to-image workflow.
+
+    Examples:
+        tsr comfy generate "a cat sitting on a windowsill"
+        tsr comfy generate "portrait photo" -n "blurry, bad quality" --steps 30
+        tsr comfy generate "landscape" -m "flux1-dev-fp8.safetensors" -W 1024 -H 768
+    """
+    from tensors.comfyui import generate_image, get_image  # noqa: PLC0415
+
+    result = generate_image(
+        prompt=prompt,
+        url=url,
+        negative_prompt=negative,
+        model=model,
+        width=width,
+        height=height,
+        steps=steps,
+        cfg=cfg,
+        seed=seed,
+        sampler=sampler,
+        scheduler=scheduler,
+        console=console if not json_output else None,
+    )
+
+    if not result:
+        console.print("[red]Generation failed[/red]")
+        raise typer.Exit(1)
+
+    if not result.success:
+        if json_output:
+            console.print_json(data={"success": False, "errors": result.node_errors})
+        else:
+            console.print("[red]Generation failed[/red]")
+            for node_id, errors in result.node_errors.items():
+                console.print(f"  [yellow]Node {node_id}:[/yellow] {errors}")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(
+            data={
+                "success": True,
+                "prompt_id": result.prompt_id,
+                "images": [str(img) for img in result.images],
+            }
+        )
+        return
+
+    # Save output if requested
+    if output and result.images:
+        # Download first image and save locally
+        img_path = result.images[0]
+        img_data = get_image(str(img_path), url=url)
+        if img_data:
+            output.write_bytes(img_data)
+            console.print(f"[green]Saved:[/green] {output}")
+        else:
+            console.print(f"[yellow]Could not download image: {img_path}[/yellow]")
+
+    console.print("[bold green]Generation complete![/bold green]")
+    console.print(f"[dim]Prompt ID: {result.prompt_id}[/dim]")
+
+
+@comfy_app.command("run")
+def comfy_run(
+    workflow_file: Annotated[Path, typer.Argument(help="Path to workflow JSON file")],
+    url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
+    json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+) -> None:
+    """Run an arbitrary ComfyUI workflow from a JSON file.
+
+    The workflow should be in ComfyUI API format (exported via "Save (API Format)").
+    """
+    from tensors.comfyui import run_workflow  # noqa: PLC0415
+
+    if not workflow_file.exists():
+        console.print(f"[red]Error: Workflow file not found: {workflow_file}[/red]")
+        raise typer.Exit(1)
+
+    result = run_workflow(
+        workflow=workflow_file,
+        url=url,
+        console=console if not json_output else None,
+    )
+
+    if not result:
+        console.print("[red]Failed to queue workflow[/red]")
+        raise typer.Exit(1)
+
+    if not result.success:
+        if json_output:
+            console.print_json(data={"success": False, "prompt_id": result.prompt_id, "errors": result.node_errors})
+        else:
+            console.print("[red]Workflow execution failed[/red]")
+            for node_id, errors in result.node_errors.items():
+                console.print(f"  [yellow]Node {node_id}:[/yellow] {errors}")
+        raise typer.Exit(1)
+
+    if json_output:
+        console.print_json(data={"success": True, "prompt_id": result.prompt_id, "outputs": result.outputs})
+        return
+
+    console.print("[bold green]Workflow complete![/bold green]")
+    console.print(f"[dim]Prompt ID: {result.prompt_id}[/dim]")
+
+    # Show output images
+    for _node_id, output in result.outputs.items():
+        if "images" in output:
+            for img in output["images"]:
+                console.print(f"  [green]Image:[/green] {img.get('filename', 'unknown')}")
+
+
 def main() -> int:
     """Main entry point."""
     # Handle legacy invocation: tsr <file.safetensors> -> tsr info <file>
@@ -923,6 +1257,7 @@ def main() -> int:
         "serve",
         "db",
         "hf",
+        "comfy",
     )
     if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
         arg = sys.argv[1]

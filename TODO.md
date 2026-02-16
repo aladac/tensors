@@ -15,16 +15,16 @@
   - Include SDXL/Flux-compatible default workflow (DEFAULT_WORKFLOW_TEMPLATE)
 
 ## Phase 2: CLI Commands (`tensors/cli.py`)
-- [ ] Step 2.1: Add `comfy` subcommand group with status commands
-  - `tsr comfy status` - System stats
+- [x] Step 2.1: Add `comfy` subcommand group with status commands
+  - `tsr comfy status` - System stats (GPU, RAM, queue)
   - `tsr comfy queue` - Queue status
   - `tsr comfy queue --clear` - Clear queue
   - `tsr comfy models` - List loaded models
   - `tsr comfy history [PROMPT_ID]` - View history
-- [ ] Step 2.2: Add generation commands
-  - `tsr comfy generate "prompt"` - Simple text-to-image
+- [x] Step 2.2: Add generation commands
+  - `tsr comfy generate "prompt"` - Simple text-to-image with full options
   - `tsr comfy run workflow.json` - Run arbitrary workflow
-  - Rich progress bar for generation
+  - Rich progress output via console
 
 ## Phase 3: Server API Routes (`tensors/server/comfyui_api_routes.py`)
 - [ ] Step 3.1: Create new router with query endpoints
