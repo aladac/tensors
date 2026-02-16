@@ -27,17 +27,17 @@
   - Rich progress output via console
 
 ## Phase 3: Server API Routes (`tensors/server/comfyui_api_routes.py`)
-- [ ] Step 3.1: Create new router with query endpoints
+- [x] Step 3.1: Create new router with query endpoints
   - `GET /api/comfyui/status` - System stats
   - `GET /api/comfyui/queue` - Queue status
   - `DELETE /api/comfyui/queue` - Clear queue
   - `GET /api/comfyui/models` - List loaded models
   - `GET /api/comfyui/history` - List history
   - `GET /api/comfyui/history/{prompt_id}` - Get specific result
-- [ ] Step 3.2: Add generation endpoints
+- [x] Step 3.2: Add generation endpoints
   - `POST /api/comfyui/generate` - Text-to-image generation
   - `POST /api/comfyui/workflow` - Run arbitrary workflow
-- [ ] Step 3.3: Register router in server/__init__.py
+- [x] Step 3.3: Register router in server/__init__.py (with API key auth)
 
 ## Phase 4: Configuration (`tensors/config.py`)
 - [ ] Step 4.1: Add ComfyUI config functions

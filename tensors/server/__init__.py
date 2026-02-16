@@ -12,6 +12,7 @@ from scalar_fastapi import get_scalar_api_reference
 from tensors.config import get_server_api_key
 from tensors.server.auth_routes import create_auth_router
 from tensors.server.civitai_routes import create_civitai_router
+from tensors.server.comfyui_api_routes import create_comfyui_api_router
 from tensors.server.comfyui_routes import create_comfyui_router
 from tensors.server.db_routes import create_db_router
 from tensors.server.download_routes import create_download_router
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(create_db_router(), dependencies=[Depends(verify_api_key)])
     app.include_router(create_gallery_router(), dependencies=[Depends(verify_api_key)])
     app.include_router(create_download_router(), dependencies=[Depends(verify_api_key)])
+    app.include_router(create_comfyui_api_router(), dependencies=[Depends(verify_api_key)])
     return app
 
 
