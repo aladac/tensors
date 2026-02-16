@@ -26,6 +26,7 @@ from tensors.config import (
     ModelType,
     SortOrder,
     get_default_output_path,
+    get_model_paths,
     load_api_key,
     load_config,
     save_config,
@@ -125,6 +126,46 @@ class TestGetDefaultOutputPath:
         """Test that unknown types return None."""
         assert get_default_output_path("UnknownType") is None
         assert get_default_output_path(None) is None
+
+
+class TestGetModelPaths:
+    """Tests for get_model_paths function."""
+
+    def test_returns_dict_with_all_types(self) -> None:
+        """Test that all model types are included."""
+        paths = get_model_paths()
+        assert isinstance(paths, dict)
+        assert "Checkpoint" in paths
+        assert "LORA" in paths
+        assert "LoCon" in paths
+        assert "TextualInversion" in paths
+        assert "VAE" in paths
+        assert "Controlnet" in paths
+
+    def test_config_override(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that config.toml paths override defaults."""
+        # Create a config file with custom path
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[paths]\ncheckpoints = "/custom/checkpoints"\n')
+        monkeypatch.setattr(config, "CONFIG_FILE", config_file)
+
+        paths = get_model_paths()
+        assert paths["Checkpoint"] == Path("/custom/checkpoints")
+        # Other types should still be defaults
+        assert "loras" in str(paths["LORA"])
+
+    def test_get_default_output_path_uses_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test that get_default_output_path respects config overrides."""
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[paths]\nloras = "/custom/loras"\n')
+        monkeypatch.setattr(config, "CONFIG_FILE", config_file)
+
+        result = get_default_output_path("LORA")
+        assert result == Path("/custom/loras")
+
+        # LoCon should also use the loras path
+        result = get_default_output_path("LoCon")
+        assert result == Path("/custom/loras")
 
 
 class TestLoadApiKey:

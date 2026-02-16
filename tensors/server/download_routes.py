@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel as PydanticBaseModel
 
 from tensors.api import download_model_with_progress, fetch_civitai_by_hash, fetch_civitai_model, fetch_civitai_model_version
-from tensors.config import MODELS_DIR, load_api_key
+from tensors.config import get_default_output_path, get_model_paths, load_api_key
 from tensors.db import Database
 
 logger = logging.getLogger(__name__)
@@ -75,18 +75,14 @@ def _get_output_dir(version_info: dict[str, Any], override: str | None) -> Path:
         return Path(override)
 
     model_type = version_info.get("model", {}).get("type", "Checkpoint")
+    path = get_default_output_path(model_type)
 
-    # Map type to directory
-    type_dirs = {
-        "Checkpoint": MODELS_DIR / "checkpoints",
-        "LORA": MODELS_DIR / "loras",
-        "LoCon": MODELS_DIR / "loras",
-        "TextualInversion": MODELS_DIR / "embeddings",
-        "VAE": MODELS_DIR / "vae",
-        "Controlnet": MODELS_DIR / "controlnet",
-    }
+    if path:
+        return path
 
-    return type_dirs.get(model_type, MODELS_DIR / "other")
+    # Fallback for unknown types
+    paths = get_model_paths()
+    return paths.get("Other", Path.home() / ".local" / "share" / "tensors" / "models" / "other")
 
 
 _KB = 1024

@@ -25,11 +25,16 @@ GALLERY_DIR = DATA_DIR / "gallery"
 # Legacy config for migration
 LEGACY_RC_FILE = Path.home() / ".sftrc"
 
-# Default download paths by model type
+# Default download paths by model type (can be overridden in config.toml [paths])
 DEFAULT_PATHS: dict[str, Path] = {
     "Checkpoint": MODELS_DIR / "checkpoints",
     "LORA": MODELS_DIR / "loras",
     "LoCon": MODELS_DIR / "loras",
+    "TextualInversion": MODELS_DIR / "embeddings",
+    "VAE": MODELS_DIR / "vae",
+    "Controlnet": MODELS_DIR / "controlnet",
+    "Upscaler": MODELS_DIR / "upscalers",
+    "Other": MODELS_DIR / "other",
 }
 
 CIVITAI_API_BASE = "https://civitai.com/api/v1"
@@ -274,11 +279,59 @@ def load_api_key() -> str | None:
     return None
 
 
+def get_model_paths() -> dict[str, Path]:
+    """Get model paths from config, with defaults.
+
+    Config format in config.toml:
+        [paths]
+        checkpoints = "/opt/comfyui/models/checkpoints"
+        loras = "/opt/comfyui/models/loras"
+        embeddings = "/opt/comfyui/models/embeddings"
+        vae = "/opt/comfyui/models/vae"
+        controlnet = "/opt/comfyui/models/controlnet"
+        upscalers = "/opt/comfyui/models/upscale_models"
+        other = "/opt/comfyui/models/other"
+
+    Returns dict mapping CivitAI model types to paths.
+    """
+    config = load_config()
+    paths_config = config.get("paths", {})
+
+    # Map config keys to CivitAI model types
+    key_to_types = {
+        "checkpoints": ["Checkpoint"],
+        "loras": ["LORA", "LoCon"],
+        "embeddings": ["TextualInversion"],
+        "vae": ["VAE"],
+        "controlnet": ["Controlnet"],
+        "upscalers": ["Upscaler"],
+        "other": ["Other"],
+    }
+
+    # Start with defaults
+    result = dict(DEFAULT_PATHS)
+
+    # Override with config values
+    if isinstance(paths_config, dict):
+        for key, types in key_to_types.items():
+            if key in paths_config:
+                path = Path(paths_config[key])
+                for model_type in types:
+                    result[model_type] = path
+
+    return result
+
+
 def get_default_output_path(model_type: str | None) -> Path | None:
-    """Get default output path based on model type."""
-    if model_type and model_type in DEFAULT_PATHS:
-        return DEFAULT_PATHS[model_type]
-    return None
+    """Get default output path based on model type.
+
+    Checks config.toml [paths] section first, falls back to defaults.
+    """
+    if not model_type:
+        return None
+
+    paths = get_model_paths()
+    return paths.get(model_type)
 
 
 # ============================================================================

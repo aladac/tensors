@@ -29,6 +29,7 @@ from tensors.config import (
     Provider,
     SortOrder,
     get_default_output_path,
+    get_model_paths,
     load_api_key,
     load_config,
     save_config,
@@ -490,6 +491,7 @@ def _display_download_info(
 def config(
     show: Annotated[bool, typer.Option("--show", help="Show current config")] = False,
     set_key: Annotated[str | None, typer.Option("--set-key", help="Set CivitAI API key")] = None,
+    set_path: Annotated[str | None, typer.Option("--set-path", help="Set model path (TYPE=PATH)")] = None,
 ) -> None:
     """Manage configuration."""
     if set_key:
@@ -501,7 +503,29 @@ def config(
         console.print(f"[green]API key saved to {CONFIG_FILE}[/green]")
         return
 
-    if show or (not set_key):
+    if set_path:
+        # Parse TYPE=PATH format
+        if "=" not in set_path:
+            console.print("[red]Error: Use format TYPE=PATH (e.g., checkpoints=/opt/models/checkpoints)[/red]")
+            raise typer.Exit(1)
+
+        path_type, path_value = set_path.split("=", 1)
+        path_type = path_type.lower().strip()
+        valid_types = ["checkpoints", "loras", "embeddings", "vae", "controlnet", "upscalers", "other"]
+
+        if path_type not in valid_types:
+            console.print(f"[red]Error: Invalid type '{path_type}'. Valid: {', '.join(valid_types)}[/red]")
+            raise typer.Exit(1)
+
+        cfg = load_config()
+        if "paths" not in cfg:
+            cfg["paths"] = {}
+        cfg["paths"][path_type] = path_value.strip()
+        save_config(cfg)
+        console.print(f"[green]Path for {path_type} set to: {path_value}[/green]")
+        return
+
+    if show or (not set_key and not set_path):
         console.print(f"[bold]Config file:[/bold] {CONFIG_FILE}")
         console.print(f"[bold]Config exists:[/bold] {CONFIG_FILE.exists()}")
 
@@ -513,7 +537,30 @@ def config(
             console.print("[bold]API key:[/bold] [yellow]Not set[/yellow]")
 
         console.print()
+        console.print("[bold]Model paths:[/bold]")
+        paths = get_model_paths()
+        # Group by unique paths to show cleanly
+        shown_paths: dict[str, list[str]] = {}
+        for model_type, path in paths.items():
+            path_str = str(path)
+            if path_str not in shown_paths:
+                shown_paths[path_str] = []
+            shown_paths[path_str].append(model_type)
+
+        cfg = load_config()
+        configured_paths = cfg.get("paths", {})
+
+        for path_str, types in sorted(shown_paths.items(), key=lambda x: x[0]):
+            is_custom = any(
+                path_str == configured_paths.get(k)
+                for k in ["checkpoints", "loras", "embeddings", "vae", "controlnet", "upscalers", "other"]
+            )
+            marker = " [green](custom)[/green]" if is_custom else " [dim](default)[/dim]"
+            console.print(f"  {', '.join(sorted(types))}: {path_str}{marker}")
+
+        console.print()
         console.print("[dim]Set API key with: tsr config --set-key YOUR_KEY[/dim]")
+        console.print("[dim]Set paths with:   tsr config --set-path checkpoints=/path/to/models[/dim]")
 
 
 @app.command()
