@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field
 
@@ -13,6 +14,7 @@ from tensors.comfyui import (
     clear_queue,
     generate_image,
     get_history,
+    get_image,
     get_loaded_models,
     get_queue_status,
     get_system_stats,
@@ -270,6 +272,30 @@ def comfyui_workflow(request: WorkflowRequest) -> dict[str, Any]:
         "prompt_id": result.get("prompt_id", ""),
         "number": result.get("number"),
     }
+
+
+@router.get("/image/{filename}")
+def comfyui_image(
+    filename: str,
+    subfolder: str = Query(default="", description="Subfolder within output directory"),
+    folder_type: str = Query(default="output", description="Folder type: output, input, temp"),
+) -> Response:
+    """Fetch a generated image from ComfyUI.
+
+    Use this to retrieve images by filename after generation.
+    """
+    image_data = get_image(filename=filename, subfolder=subfolder, folder_type=folder_type)
+    if image_data is None:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    # Determine content type from filename
+    content_type = "image/png"
+    if filename.lower().endswith(".jpg") or filename.lower().endswith(".jpeg"):
+        content_type = "image/jpeg"
+    elif filename.lower().endswith(".webp"):
+        content_type = "image/webp"
+
+    return Response(content=image_data, media_type=content_type)
 
 
 def create_comfyui_api_router() -> APIRouter:
