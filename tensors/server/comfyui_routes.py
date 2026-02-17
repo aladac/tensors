@@ -189,7 +189,7 @@ LOGIN_PAGE_HTML = """
 """
 
 
-@router.get("/comfy/login")
+@router.get("/comfy/login", include_in_schema=False)
 async def login_page(error: str | None = None) -> HTMLResponse:
     """Show login page."""
     error_html = ""
@@ -199,7 +199,7 @@ async def login_page(error: str | None = None) -> HTMLResponse:
     return HTMLResponse(content=html)
 
 
-@router.get("/comfy/auth/github")
+@router.get("/comfy/auth/github", include_in_schema=False)
 async def github_auth(request: Request) -> Response:
     """Redirect to GitHub OAuth."""
     if not _is_auth_configured():
@@ -232,7 +232,7 @@ async def github_auth(request: Request) -> Response:
     )
 
 
-@router.get("/comfy/auth/callback")
+@router.get("/comfy/auth/callback", include_in_schema=False)
 async def github_callback(  # noqa: PLR0911
     code: str | None = None,
     state: str | None = None,
@@ -317,7 +317,7 @@ async def github_callback(  # noqa: PLR0911
     return response
 
 
-@router.get("/comfy/logout")
+@router.get("/comfy/logout", include_in_schema=False)
 async def logout() -> Response:
     """Clear session and redirect to login."""
     response = RedirectResponse(url="/comfy/login", status_code=status.HTTP_303_SEE_OTHER)
@@ -348,7 +348,11 @@ def _check_auth(comfy_session: str | None, path: str = "", method: str = "GET") 
         )
 
 
-@router.api_route("/comfy/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+@router.api_route(
+    "/comfy/{path:path}",
+    methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
+    include_in_schema=False,
+)
 async def proxy_comfyui(request: Request, path: str, comfy_session: str | None = Cookie(default=None)) -> Response:
     """Proxy all HTTP requests to ComfyUI."""
     _check_auth(comfy_session, path, request.method)
@@ -397,7 +401,7 @@ async def proxy_comfyui(request: Request, path: str, comfy_session: str | None =
     )
 
 
-@router.websocket("/comfy/ws")
+@router.websocket("/comfy/ws")  # WebSockets are not included in OpenAPI schema by default
 async def proxy_websocket(websocket: WebSocket, comfy_session: str | None = Cookie(default=None)) -> None:
     """Proxy WebSocket connections to ComfyUI."""
     # Check auth via cookie
