@@ -1,9 +1,9 @@
 [project]
 name = "tensors"
-version = "0.1.18"
+dynamic = ["version"]
 description = "Read safetensor metadata and fetch CivitAI model information"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "safetensors>=0.4.0",
     "httpx>=0.27.0",
@@ -23,6 +23,9 @@ tsr = "tensors:main"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "tensors/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["tensors"]

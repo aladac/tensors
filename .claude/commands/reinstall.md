@@ -1,15 +1,6 @@
-# Reinstall tensors
-
-Bump version, reinstall locally and on junkpile.
-
-Run the reinstall script:
-
+---
+description: Reinstall tensors - update version with git hash, install locally and on junkpile
+---
 ```bash
-python scripts/reinstall.py
+${CLAUDE_PROJECT_ROOT}/.claude/commands/reinstall.sh
 ```
-
-This will:
-1. Bump the patch version in pyproject.toml
-2. Install locally with `uv pip install -e .`
-3. Sync the project to junkpile via rsync
-4. Install on junkpile with `pip install -e '.[server]'`
