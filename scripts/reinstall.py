@@ -48,7 +48,9 @@ def set_version(new_version: str) -> None:
     print(f"  Updated tensors/__init__.py to {new_version}")
 
 
-def run(cmd: list[str], *, check: bool = True, capture: bool = False, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def run(
+    cmd: list[str], *, check: bool = True, capture: bool = False, cwd: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     """Run a command."""
     print(f"  $ {' '.join(cmd)}")
     return subprocess.run(cmd, check=check, capture_output=capture, text=True, cwd=cwd or PROJECT_ROOT)
