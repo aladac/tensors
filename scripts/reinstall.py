@@ -25,7 +25,7 @@ def get_version() -> str:
 
 def get_base_version(version: str) -> str:
     """Strip any +hash suffix from version."""
-    return version.split("+")[0]
+    return version.split("+", maxsplit=1)[0]
 
 
 def get_git_hash() -> str:
