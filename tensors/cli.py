@@ -1208,13 +1208,15 @@ def comfy_generate(
             elif not json_output:
                 console.print(f"[yellow]Could not download image: {img_path}[/yellow]")
 
-        all_results.append({
-            "success": True,
-            "index": i,
-            "prompt_id": result.prompt_id,
-            "images": [str(img) for img in result.images],
-            "saved": str(saved_path) if saved_path else None,
-        })
+        all_results.append(
+            {
+                "success": True,
+                "index": i,
+                "prompt_id": result.prompt_id,
+                "images": [str(img) for img in result.images],
+                "saved": str(saved_path) if saved_path else None,
+            }
+        )
 
     if json_output:
         console.print_json(
