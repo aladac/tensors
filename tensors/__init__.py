@@ -1,5 +1,7 @@
 """tsr: Read safetensor metadata, search and download CivitAI models."""
 
+__version__ = "0.1.18+093179c"
+
 from tensors.cli import main
 from tensors.config import (
     CONFIG_DIR,
