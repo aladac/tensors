@@ -1131,6 +1131,7 @@ def comfy_generate(
     sampler: Annotated[str, typer.Option("--sampler", help="Sampler name")] = "euler",
     scheduler: Annotated[str, typer.Option("--scheduler", help="Scheduler name")] = "normal",
     output: Annotated[Path | None, typer.Option("-o", "--output", help="Output file path")] = None,
+    count: Annotated[int, typer.Option("-c", "--count", help="Number of images to generate")] = 1,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
 ) -> None:
     """Generate an image with a simple text-to-image workflow.
@@ -1139,60 +1140,100 @@ def comfy_generate(
         tsr comfy generate "a cat sitting on a windowsill"
         tsr comfy generate "portrait photo" -n "blurry, bad quality" --steps 30
         tsr comfy generate "landscape" -m "flux1-dev-fp8.safetensors" -W 1024 -H 768
+        tsr comfy generate "cyberpunk city" --count 4 -o batch.png
     """
+    import random  # noqa: PLC0415
+
     from tensors.comfyui import generate_image, get_image  # noqa: PLC0415
 
-    result = generate_image(
-        prompt=prompt,
-        url=url,
-        negative_prompt=negative,
-        model=model,
-        width=width,
-        height=height,
-        steps=steps,
-        cfg=cfg,
-        seed=seed,
-        sampler=sampler,
-        scheduler=scheduler,
-        console=console if not json_output else None,
-    )
+    all_results: list[dict[str, Any]] = []
+    all_saved: list[Path] = []
 
-    if not result:
-        console.print("[red]Generation failed[/red]")
-        raise typer.Exit(1)
+    # Determine base seed for batch
+    base_seed = seed if seed >= 0 else random.randint(0, 2**32 - 1)
 
-    if not result.success:
-        if json_output:
-            console.print_json(data={"success": False, "errors": result.node_errors})
-        else:
-            console.print("[red]Generation failed[/red]")
-            for node_id, errors in result.node_errors.items():
-                console.print(f"  [yellow]Node {node_id}:[/yellow] {errors}")
-        raise typer.Exit(1)
+    for i in range(count):
+        current_seed = base_seed + i if seed >= 0 else -1  # Increment seed or use random each time
+
+        if count > 1 and not json_output:
+            console.print(f"\n[cyan]Generating image {i + 1}/{count}...[/cyan]")
+
+        result = generate_image(
+            prompt=prompt,
+            url=url,
+            negative_prompt=negative,
+            model=model,
+            width=width,
+            height=height,
+            steps=steps,
+            cfg=cfg,
+            seed=current_seed,
+            sampler=sampler,
+            scheduler=scheduler,
+            console=console if not json_output else None,
+        )
+
+        if not result:
+            if json_output:
+                all_results.append({"success": False, "index": i, "errors": {"generation": "Failed to generate"}})
+            else:
+                console.print(f"[red]Generation {i + 1} failed[/red]")
+            continue
+
+        if not result.success:
+            if json_output:
+                all_results.append({"success": False, "index": i, "errors": result.node_errors})
+            else:
+                console.print(f"[red]Generation {i + 1} failed[/red]")
+                for node_id, errors in result.node_errors.items():
+                    console.print(f"  [yellow]Node {node_id}:[/yellow] {errors}")
+            continue
+
+        # Save output if requested
+        saved_path: Path | None = None
+        if output and result.images:
+            img_path = result.images[0]
+            img_data = get_image(str(img_path), url=url)
+            if img_data:
+                if count == 1:
+                    save_path = output
+                else:
+                    # Add index suffix for batch: output.png -> output_001.png
+                    save_path = output.parent / f"{output.stem}_{i + 1:03d}{output.suffix}"
+                save_path.write_bytes(img_data)
+                saved_path = save_path
+                all_saved.append(save_path)
+                if not json_output:
+                    console.print(f"[green]Saved:[/green] {save_path}")
+            elif not json_output:
+                console.print(f"[yellow]Could not download image: {img_path}[/yellow]")
+
+        all_results.append({
+            "success": True,
+            "index": i,
+            "prompt_id": result.prompt_id,
+            "images": [str(img) for img in result.images],
+            "saved": str(saved_path) if saved_path else None,
+        })
 
     if json_output:
         console.print_json(
             data={
-                "success": True,
-                "prompt_id": result.prompt_id,
-                "images": [str(img) for img in result.images],
+                "success": all(r.get("success", False) for r in all_results),
+                "count": len(all_results),
+                "results": all_results,
             }
         )
         return
 
-    # Save output if requested
-    if output and result.images:
-        # Download first image and save locally
-        img_path = result.images[0]
-        img_data = get_image(str(img_path), url=url)
-        if img_data:
-            output.write_bytes(img_data)
-            console.print(f"[green]Saved:[/green] {output}")
-        else:
-            console.print(f"[yellow]Could not download image: {img_path}[/yellow]")
-
-    console.print("[bold green]Generation complete![/bold green]")
-    console.print(f"[dim]Prompt ID: {result.prompt_id}[/dim]")
+    console.print("\n[bold green]Generation complete![/bold green]")
+    if count > 1:
+        successful = sum(1 for r in all_results if r.get("success", False))
+        console.print(f"[dim]Generated {successful}/{count} images[/dim]")
+        if all_saved:
+            console.print(f"[dim]Saved to: {all_saved[0].parent}/[/dim]")
+    elif all_results and all_results[0].get("prompt_id"):
+        console.print(f"[dim]Prompt ID: {all_results[0]['prompt_id']}[/dim]")
 
 
 @comfy_app.command("run")
