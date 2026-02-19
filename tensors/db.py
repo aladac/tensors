@@ -755,6 +755,54 @@ class Database:
             ).all()
             return [w.word for w in words]
 
+    def get_trigger_words_by_filename(self, filename: str) -> list[str]:
+        """Get trigger words for a LoRA by matching filename in version_files.
+
+        Args:
+            filename: The filename to search for (e.g., "spumcostyle.safetensors")
+
+        Returns:
+            List of trigger/trained words from CivitAI metadata
+        """
+        with self.session() as session:
+            # Find version file by filename match
+            vf = session.exec(select(VersionFile).where(VersionFile.name == filename)).first()
+            if not vf:
+                # Try partial match (without extension)
+                base_name = filename.rsplit(".", 1)[0] if "." in filename else filename
+                vf = session.exec(select(VersionFile).where(col(VersionFile.name).contains(base_name))).first()
+
+            if not vf or not vf.version_id:
+                return []
+
+            words = session.exec(
+                select(TrainedWord).where(TrainedWord.version_id == vf.version_id).order_by(col(TrainedWord.position))
+            ).all()
+            return [w.word for w in words]
+
+    def get_base_model_by_filename(self, filename: str) -> str | None:
+        """Get base_model for a checkpoint/LoRA by filename lookup.
+
+        Args:
+            filename: The filename to search for
+
+        Returns:
+            Base model string (e.g., "Pony", "SDXL 1.0") or None
+        """
+        with self.session() as session:
+            # Find version file by filename match
+            vf = session.exec(select(VersionFile).where(VersionFile.name == filename)).first()
+            if not vf:
+                # Try partial match (without extension)
+                base_name = filename.rsplit(".", 1)[0] if "." in filename else filename
+                vf = session.exec(select(VersionFile).where(col(VersionFile.name).contains(base_name))).first()
+
+            if not vf or not vf.version_id:
+                return None
+
+            mv = session.get(ModelVersion, vf.version_id)
+            return mv.base_model if mv else None
+
     # =========================================================================
     # Statistics
     # =========================================================================

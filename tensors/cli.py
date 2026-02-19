@@ -21,6 +21,7 @@ from tensors.api import (
 )
 from tensors.config import (
     CONFIG_FILE,
+    MODEL_FAMILY_DEFAULTS,
     BaseModel,
     CommercialUse,
     ModelType,
@@ -28,6 +29,7 @@ from tensors.config import (
     Period,
     Provider,
     SortOrder,
+    detect_model_family,
     get_default_output_path,
     get_model_paths,
     load_api_key,
@@ -1118,7 +1120,7 @@ def comfy_history(
 
 
 @comfy_app.command("generate")
-def comfy_generate(
+def comfy_generate(  # noqa: PLR0915
     prompt: Annotated[str, typer.Argument(help="Positive prompt text")],
     url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
     negative: Annotated[str, typer.Option("-n", "--negative", help="Negative prompt")] = "",
@@ -1132,6 +1134,10 @@ def comfy_generate(
     scheduler: Annotated[str, typer.Option("--scheduler", help="Scheduler name")] = "normal",
     output: Annotated[Path | None, typer.Option("-o", "--output", help="Output file path")] = None,
     count: Annotated[int, typer.Option("-c", "--count", help="Number of images to generate")] = 1,
+    lora: Annotated[str | None, typer.Option("-l", "--lora", help="LoRA model name")] = None,
+    lora_strength: Annotated[float, typer.Option("--lora-strength", help="LoRA strength")] = 1.0,
+    no_quality: Annotated[bool, typer.Option("--no-quality", help="Disable auto quality tags")] = False,
+    no_negative: Annotated[bool, typer.Option("--no-negative", help="Disable auto negative prompt")] = False,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
 ) -> None:
     """Generate an image with a simple text-to-image workflow.
@@ -1141,6 +1147,8 @@ def comfy_generate(
         tsr comfy generate "portrait photo" -n "blurry, bad quality" --steps 30
         tsr comfy generate "landscape" -m "flux1-dev-fp8.safetensors" -W 1024 -H 768
         tsr comfy generate "cyberpunk city" --count 4 -o batch.png
+        tsr comfy generate "girl" --lora spumcostyle.safetensors --lora-strength 0.8
+        tsr comfy generate "raw prompt" --no-quality --no-negative
     """
     import random  # noqa: PLC0415
 
@@ -1152,6 +1160,64 @@ def comfy_generate(
     # Determine base seed for batch
     base_seed = seed if seed >= 0 else random.randint(0, 2**32 - 1)
 
+    # Detect model family and apply defaults
+    family_defaults: dict[str, Any] = {}
+    model_family: str | None = None
+    if model:
+        # Try to get base_model from database
+        base_model_str: str | None = None
+        try:
+            with Database() as db:
+                db.init_schema()
+                base_model_str = db.get_base_model_by_filename(model)
+        except Exception:
+            pass
+
+        model_family = detect_model_family(model, base_model_str)
+        if model_family:
+            family_defaults = MODEL_FAMILY_DEFAULTS.get(model_family, {})
+            if not json_output:
+                console.print(f"[dim]Detected model family: {model_family}[/dim]")
+
+    # Build enhanced prompt with quality prefix and LoRA trigger words
+    enhanced_prompt = prompt
+    prompt_parts: list[str] = []
+
+    # Add LoRA trigger words if using LoRA
+    if lora:
+        try:
+            with Database() as db:
+                db.init_schema()
+                trigger_words = db.get_trigger_words_by_filename(lora)
+                if trigger_words:
+                    prompt_parts.extend(trigger_words)
+                    if not json_output:
+                        console.print(f"[dim]LoRA trigger words: {', '.join(trigger_words)}[/dim]")
+        except Exception:
+            pass
+
+    # Add quality prefix based on model family
+    if not no_quality and family_defaults.get("quality_prefix"):
+        prompt_parts.append(family_defaults["quality_prefix"])
+
+    # Add user prompt
+    prompt_parts.append(prompt)
+    enhanced_prompt = ", ".join(prompt_parts) if len(prompt_parts) > 1 else prompt
+
+    # Build enhanced negative prompt
+    enhanced_negative = negative
+    if not no_negative and family_defaults.get("negative_prompt"):
+        family_negative = family_defaults["negative_prompt"]
+        enhanced_negative = f"{negative}, {family_negative}" if negative else family_negative
+
+    if not json_output and (enhanced_prompt != prompt or enhanced_negative != negative):
+        if enhanced_prompt != prompt:
+            truncated = enhanced_prompt[:100] + "..." if len(enhanced_prompt) > 100 else enhanced_prompt  # noqa: PLR2004
+            console.print(f"[dim]Enhanced prompt: {truncated}[/dim]")
+        if enhanced_negative != negative:
+            truncated = enhanced_negative[:80] + "..." if len(enhanced_negative) > 80 else enhanced_negative  # noqa: PLR2004
+            console.print(f"[dim]Enhanced negative: {truncated}[/dim]")
+
     for i in range(count):
         current_seed = base_seed + i if seed >= 0 else -1  # Increment seed or use random each time
 
@@ -1159,9 +1225,9 @@ def comfy_generate(
             console.print(f"\n[cyan]Generating image {i + 1}/{count}...[/cyan]")
 
         result = generate_image(
-            prompt=prompt,
+            prompt=enhanced_prompt,
             url=url,
-            negative_prompt=negative,
+            negative_prompt=enhanced_negative,
             model=model,
             width=width,
             height=height,
@@ -1171,6 +1237,8 @@ def comfy_generate(
             sampler=sampler,
             scheduler=scheduler,
             console=console if not json_output else None,
+            lora_name=lora,
+            lora_strength=lora_strength,
         )
 
         if not result:
@@ -1195,11 +1263,7 @@ def comfy_generate(
             img_path = result.images[0]
             img_data = get_image(str(img_path), url=url)
             if img_data:
-                if count == 1:
-                    save_path = output
-                else:
-                    # Add index suffix for batch: output.png -> output_001.png
-                    save_path = output.parent / f"{output.stem}_{i + 1:03d}{output.suffix}"
+                save_path = output if count == 1 else output.parent / f"{output.stem}_{i + 1:03d}{output.suffix}"
                 save_path.write_bytes(img_data)
                 saved_path = save_path
                 all_saved.append(save_path)

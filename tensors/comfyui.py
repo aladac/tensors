@@ -526,6 +526,18 @@ def run_workflow(
 # Simple Text-to-Image Generation
 # ============================================================================
 
+# LoRA loader node template (inserted between checkpoint and sampler)
+LORA_LOADER_NODE: dict[str, Any] = {
+    "class_type": "LoraLoader",
+    "inputs": {
+        "lora_name": "",
+        "strength_model": 1.0,
+        "strength_clip": 1.0,
+        "model": ["4", 0],  # From checkpoint
+        "clip": ["4", 1],  # From checkpoint
+    },
+}
+
 # Default SDXL/Flux compatible workflow template
 # This is a minimal text-to-image workflow that works with most models
 DEFAULT_WORKFLOW_TEMPLATE: dict[str, Any] = {
@@ -582,6 +594,8 @@ def _build_workflow(
     seed: int = -1,
     sampler: str = "euler",
     scheduler: str = "normal",
+    lora_name: str | None = None,
+    lora_strength: float = 1.0,
 ) -> dict[str, Any]:
     """Build a text-to-image workflow from parameters.
 
@@ -596,6 +610,8 @@ def _build_workflow(
         seed: Random seed (-1 for random)
         sampler: Sampler name
         scheduler: Scheduler name
+        lora_name: LoRA model filename (optional)
+        lora_strength: LoRA strength (default 1.0)
 
     Returns:
         ComfyUI workflow dict
@@ -624,6 +640,25 @@ def _build_workflow(
     workflow["6"]["inputs"]["text"] = prompt
     workflow["7"]["inputs"]["text"] = negative_prompt
 
+    # Inject LoRA loader if specified
+    if lora_name:
+        # Add LoRA loader node (node 10)
+        lora_node = copy.deepcopy(LORA_LOADER_NODE)
+        lora_node["inputs"]["lora_name"] = lora_name
+        lora_node["inputs"]["strength_model"] = lora_strength
+        lora_node["inputs"]["strength_clip"] = lora_strength
+        # LoRA takes model/clip from checkpoint (node 4)
+        lora_node["inputs"]["model"] = ["4", 0]
+        lora_node["inputs"]["clip"] = ["4", 1]
+        workflow["10"] = lora_node
+
+        # Reroute KSampler model input from checkpoint (4) to LoRA (10)
+        workflow["3"]["inputs"]["model"] = ["10", 0]
+
+        # Reroute CLIP text encoders from checkpoint (4) to LoRA (10)
+        workflow["6"]["inputs"]["clip"] = ["10", 1]
+        workflow["7"]["inputs"]["clip"] = ["10", 1]
+
     return workflow
 
 
@@ -642,6 +677,8 @@ def generate_image(
     console: Console | None = None,
     on_progress: ProgressCallback | None = None,
     timeout: float = 600.0,
+    lora_name: str | None = None,
+    lora_strength: float = 1.0,
 ) -> GenerationResult | None:
     """Generate an image using a simple text-to-image workflow.
 
@@ -660,6 +697,8 @@ def generate_image(
         console: Rich console for progress output
         on_progress: Optional callback for progress updates
         timeout: Maximum wait time in seconds
+        lora_name: LoRA model filename (optional)
+        lora_strength: LoRA strength (default 1.0)
 
     Returns:
         GenerationResult with image paths, or None if generation failed
@@ -690,6 +729,8 @@ def generate_image(
         seed=seed,
         sampler=sampler,
         scheduler=scheduler,
+        lora_name=lora_name,
+        lora_strength=lora_strength,
     )
 
     # Run workflow

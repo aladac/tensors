@@ -502,6 +502,93 @@ COMFYUI_DEFAULT_CFG = 7.0
 COMFYUI_DEFAULT_SAMPLER = "euler"
 COMFYUI_DEFAULT_SCHEDULER = "normal"
 
+# ============================================================================
+# Model Family Defaults (Quality Tags, Negative Prompts, etc.)
+# ============================================================================
+
+MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
+    "pony": {
+        "quality_prefix": "score_9, score_8_up, score_7_up",
+        "negative_prompt": "score_5, score_4, ugly, deformed, blurry, bad anatomy, bad hands, missing fingers",
+        "width": 1024,
+        "height": 1024,
+        "cfg": 7.0,
+        "clip_skip": 2,
+    },
+    "illustrious": {
+        "quality_prefix": "masterpiece, best quality, highres",
+        "negative_prompt": "worst quality, bad quality, low quality, lowres, bad anatomy, bad hands, jpeg artifacts, watermark",
+        "width": 1024,
+        "height": 1024,
+        "cfg": 6.0,
+    },
+    "sdxl": {
+        "quality_prefix": "",
+        "negative_prompt": "ugly, deformed, bad anatomy, bad hands, extra fingers, missing fingers, blurry, watermark",
+        "width": 1024,
+        "height": 1024,
+        "cfg": 7.0,
+    },
+    "sd15": {
+        "quality_prefix": "masterpiece, best quality",
+        "negative_prompt": (
+            "(worst quality:2), (low quality:2), bad anatomy, bad hands, extra fingers, "
+            "missing fingers, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, watermark"
+        ),
+        "width": 512,
+        "height": 512,
+        "cfg": 7.0,
+    },
+    "flux": {
+        "quality_prefix": "",
+        "negative_prompt": "",  # Flux doesn't use negative prompts effectively
+        "width": 1024,
+        "height": 1024,
+        "cfg": 3.5,
+    },
+}
+
+
+def detect_model_family(model_name: str, base_model: str | None = None) -> str | None:  # noqa: PLR0911
+    """Detect model family from filename or CivitAI base_model field.
+
+    Args:
+        model_name: Filename of the model (e.g., "ponyDiffusionV6XL.safetensors")
+        base_model: Optional CivitAI base_model field (e.g., "Pony", "SDXL 1.0")
+
+    Returns:
+        Model family key (pony, illustrious, sdxl, sd15, flux) or None if unknown
+    """
+    name_lower = model_name.lower()
+    base_lower = (base_model or "").lower()
+
+    # Check base_model field first (most reliable from CivitAI)
+    if base_lower:
+        if "pony" in base_lower:
+            return "pony"
+        if "illustrious" in base_lower:
+            return "illustrious"
+        if "flux" in base_lower:
+            return "flux"
+        if "sd 1.5" in base_lower or "sd 1.4" in base_lower:
+            return "sd15"
+        if "sdxl" in base_lower:
+            return "sdxl"
+
+    # Fall back to filename heuristics
+    if "pony" in name_lower:
+        return "pony"
+    if "illustrious" in name_lower or "noob" in name_lower:
+        return "illustrious"
+    if "flux" in name_lower:
+        return "flux"
+    if any(x in name_lower for x in ["sd15", "sd1.5", "sd_1.5", "dreamshaper", "realistic", "deliberate", "anything"]):
+        return "sd15"
+    if any(x in name_lower for x in ["sdxl", "xl_"]):
+        return "sdxl"
+
+    return None
+
 
 def get_comfyui_url() -> str:
     """Get the ComfyUI server URL.
