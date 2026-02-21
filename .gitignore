@@ -14,3 +14,4 @@ wheels/
 htmlcov/
 coverage.xml
 models.db
+models-db.md
