@@ -1218,69 +1218,62 @@ def comfy_generate(  # noqa: PLR0915
             truncated = enhanced_negative[:80] + "..." if len(enhanced_negative) > 80 else enhanced_negative  # noqa: PLR2004
             console.print(f"[dim]Enhanced negative: {truncated}[/dim]")
 
-    for i in range(count):
-        current_seed = base_seed + i if seed >= 0 else -1  # Increment seed or use random each time
+    # Use native ComfyUI batching - single workflow generates all images
+    result = generate_image(
+        prompt=enhanced_prompt,
+        url=url,
+        negative_prompt=enhanced_negative,
+        model=model,
+        width=width,
+        height=height,
+        steps=steps,
+        cfg=cfg,
+        seed=base_seed,
+        sampler=sampler,
+        scheduler=scheduler,
+        console=console if not json_output else None,
+        lora_name=lora,
+        lora_strength=lora_strength,
+        batch_size=count,
+    )
 
-        if count > 1 and not json_output:
-            console.print(f"\n[cyan]Generating image {i + 1}/{count}...[/cyan]")
+    if not result:
+        if json_output:
+            all_results.append({"success": False, "index": 0, "errors": {"generation": "Failed to generate"}})
+        else:
+            console.print("[red]Generation failed[/red]")
+    elif not result.success:
+        if json_output:
+            all_results.append({"success": False, "index": 0, "errors": result.node_errors})
+        else:
+            console.print("[red]Generation failed[/red]")
+            for node_id, errors in result.node_errors.items():
+                console.print(f"  [yellow]Node {node_id}:[/yellow] {errors}")
+    else:
+        # Save all output images
+        for i, img_path in enumerate(result.images):
+            saved_path: Path | None = None
+            if output:
+                img_data = get_image(str(img_path), url=url)
+                if img_data:
+                    save_path = output if count == 1 else output.parent / f"{output.stem}_{i + 1:03d}{output.suffix}"
+                    save_path.write_bytes(img_data)
+                    saved_path = save_path
+                    all_saved.append(save_path)
+                    if not json_output:
+                        console.print(f"[green]Saved:[/green] {save_path}")
+                elif not json_output:
+                    console.print(f"[yellow]Could not download image: {img_path}[/yellow]")
 
-        result = generate_image(
-            prompt=enhanced_prompt,
-            url=url,
-            negative_prompt=enhanced_negative,
-            model=model,
-            width=width,
-            height=height,
-            steps=steps,
-            cfg=cfg,
-            seed=current_seed,
-            sampler=sampler,
-            scheduler=scheduler,
-            console=console if not json_output else None,
-            lora_name=lora,
-            lora_strength=lora_strength,
-        )
-
-        if not result:
-            if json_output:
-                all_results.append({"success": False, "index": i, "errors": {"generation": "Failed to generate"}})
-            else:
-                console.print(f"[red]Generation {i + 1} failed[/red]")
-            continue
-
-        if not result.success:
-            if json_output:
-                all_results.append({"success": False, "index": i, "errors": result.node_errors})
-            else:
-                console.print(f"[red]Generation {i + 1} failed[/red]")
-                for node_id, errors in result.node_errors.items():
-                    console.print(f"  [yellow]Node {node_id}:[/yellow] {errors}")
-            continue
-
-        # Save output if requested
-        saved_path: Path | None = None
-        if output and result.images:
-            img_path = result.images[0]
-            img_data = get_image(str(img_path), url=url)
-            if img_data:
-                save_path = output if count == 1 else output.parent / f"{output.stem}_{i + 1:03d}{output.suffix}"
-                save_path.write_bytes(img_data)
-                saved_path = save_path
-                all_saved.append(save_path)
-                if not json_output:
-                    console.print(f"[green]Saved:[/green] {save_path}")
-            elif not json_output:
-                console.print(f"[yellow]Could not download image: {img_path}[/yellow]")
-
-        all_results.append(
-            {
-                "success": True,
-                "index": i,
-                "prompt_id": result.prompt_id,
-                "images": [str(img) for img in result.images],
-                "saved": str(saved_path) if saved_path else None,
-            }
-        )
+            all_results.append(
+                {
+                    "success": True,
+                    "index": i,
+                    "prompt_id": result.prompt_id,
+                    "image": str(img_path),
+                    "saved": str(saved_path) if saved_path else None,
+                }
+            )
 
     if json_output:
         console.print_json(

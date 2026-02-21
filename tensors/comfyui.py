@@ -596,6 +596,7 @@ def _build_workflow(
     scheduler: str = "normal",
     lora_name: str | None = None,
     lora_strength: float = 1.0,
+    batch_size: int = 1,
 ) -> dict[str, Any]:
     """Build a text-to-image workflow from parameters.
 
@@ -612,6 +613,7 @@ def _build_workflow(
         scheduler: Scheduler name
         lora_name: LoRA model filename (optional)
         lora_strength: LoRA strength (default 1.0)
+        batch_size: Number of images to generate in one workflow (default 1)
 
     Returns:
         ComfyUI workflow dict
@@ -632,9 +634,10 @@ def _build_workflow(
     if model:
         workflow["4"]["inputs"]["ckpt_name"] = model
 
-    # Set dimensions
+    # Set dimensions and batch size
     workflow["5"]["inputs"]["width"] = width
     workflow["5"]["inputs"]["height"] = height
+    workflow["5"]["inputs"]["batch_size"] = batch_size
 
     # Set prompts
     workflow["6"]["inputs"]["text"] = prompt
@@ -679,6 +682,7 @@ def generate_image(
     timeout: float = 600.0,
     lora_name: str | None = None,
     lora_strength: float = 1.0,
+    batch_size: int = 1,
 ) -> GenerationResult | None:
     """Generate an image using a simple text-to-image workflow.
 
@@ -699,6 +703,7 @@ def generate_image(
         timeout: Maximum wait time in seconds
         lora_name: LoRA model filename (optional)
         lora_strength: LoRA strength (default 1.0)
+        batch_size: Number of images to generate in one workflow (default 1)
 
     Returns:
         GenerationResult with image paths, or None if generation failed
@@ -731,6 +736,7 @@ def generate_image(
         scheduler=scheduler,
         lora_name=lora_name,
         lora_strength=lora_strength,
+        batch_size=batch_size,
     )
 
     # Run workflow
