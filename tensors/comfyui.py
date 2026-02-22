@@ -414,7 +414,7 @@ def _wait_for_completion_ws(
 
     try:
         ws = websocket.create_connection(ws_url, timeout=timeout)
-    except Exception as e:
+    except Exception:
         # Fall back to polling if WebSocket fails
         return _poll_for_completion_fallback(prompt_id, url, timeout, on_progress)
 
