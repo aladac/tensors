@@ -640,13 +640,9 @@ def run_workflow(
                 if on_progress:
                     on_progress(step, total, status)
 
-            return _wait_for_completion_ws(
-                prompt_id, base_url, client_id, timeout, on_progress=_console_progress
-            )
+            return _wait_for_completion_ws(prompt_id, base_url, client_id, timeout, on_progress=_console_progress)
     else:
-        return _wait_for_completion_ws(
-            prompt_id, base_url, client_id, timeout, on_progress=on_progress
-        )
+        return _wait_for_completion_ws(prompt_id, base_url, client_id, timeout, on_progress=on_progress)
 
 
 # ============================================================================
