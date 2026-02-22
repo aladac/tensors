@@ -473,6 +473,62 @@ def download(
     if not success:
         raise typer.Exit(1)
 
+    # Add downloaded file to database and link to CivitAI
+    _add_downloaded_file_to_db(dest_path, version_info)
+
+
+def _add_downloaded_file_to_db(dest_path: Path, version_info: dict[str, Any]) -> None:
+    """Add a downloaded file to the database and link to CivitAI.
+
+    Args:
+        dest_path: Path to the downloaded file
+        version_info: CivitAI version info response
+    """
+    try:
+        console.print("[dim]Adding to database...[/dim]")
+
+        # Compute SHA256 hash
+        sha256 = compute_sha256(dest_path, console)
+
+        # Read safetensor metadata
+        metadata = read_safetensor_metadata(dest_path)
+
+        # Extract CivitAI IDs
+        civitai_version_id = version_info.get("id")
+        civitai_model_id = version_info.get("modelId") or version_info.get("model", {}).get("id")
+
+        with Database() as db:
+            db.init_schema()
+            with db.session() as session:
+                # Add local file record
+                local_file = db._upsert_local_file(
+                    session,
+                    file_path=str(dest_path.resolve()),
+                    sha256=sha256,
+                    header_size=metadata.get("header_size"),
+                    tensor_count=metadata.get("tensor_count"),
+                )
+
+                # Store safetensor metadata
+                db._store_safetensor_metadata(session, local_file.id, metadata.get("metadata", {}))
+
+                # Link to CivitAI if we have the IDs
+                if civitai_model_id and civitai_version_id:
+                    local_file.civitai_model_id = civitai_model_id
+                    local_file.civitai_version_id = civitai_version_id
+                    session.add(local_file)
+
+                session.commit()
+                file_id = local_file.id
+
+        # Report success
+        console.print(f"[green]Added to database (id={file_id})[/green]")
+        if civitai_model_id and civitai_version_id:
+            console.print(f"[green]Linked to CivitAI model={civitai_model_id} version={civitai_version_id}[/green]")
+
+    except Exception as e:
+        console.print(f"[yellow]Warning: Could not add to database: {e}[/yellow]")
+
 
 def _display_download_info(
     version_info: dict[str, Any],
@@ -669,6 +725,52 @@ def db_link(
             console.print_json(data=linked)
         else:
             console.print(f"[green]Linked {len(linked)} file(s)[/green]")
+
+        # Cache model data for newly linked files
+        if linked:
+            _cache_linked_models(db, key, linked, json_output)
+
+
+def _cache_linked_models(
+    db: Database,
+    api_key: str | None,
+    linked: list[dict[str, Any]],
+    json_output: bool,
+) -> None:
+    """Fetch and cache full model data for linked files.
+
+    Args:
+        db: Database instance (already initialized)
+        api_key: CivitAI API key
+        linked: List of linked file info dicts with model_id
+        json_output: Whether to suppress console output
+    """
+    # Collect unique model IDs
+    model_ids: set[int] = {item["model_id"] for item in linked if item.get("model_id")}
+
+    # Find which models are not yet cached
+    uncached_ids: list[int] = []
+    for model_id in model_ids:
+        if db.get_model(model_id) is None:
+            uncached_ids.append(model_id)
+
+    if not uncached_ids:
+        return
+
+    if not json_output:
+        console.print(f"[cyan]Caching {len(uncached_ids)} model(s)...[/cyan]")
+
+    cached: list[dict[str, Any]] = []
+    for model_id in uncached_ids:
+        model_data = fetch_civitai_model(model_id, api_key, console if not json_output else None)
+        if model_data:
+            db.cache_model(model_data)
+            cached.append({"model_id": model_id, "name": model_data.get("name", "")})
+            if not json_output:
+                console.print(f"  [green]✓[/green] Cached: {model_data.get('name', 'N/A')}")
+
+    if not json_output and cached:
+        console.print(f"[green]Cached {len(cached)} model(s)[/green]")
 
 
 @db_app.command("cache")
