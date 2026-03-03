@@ -164,7 +164,7 @@ class Database:
                 session.add(SafetensorMetadata(local_file_id=local_file_id, key=key, value=str_value))
 
     def list_local_files(self) -> list[dict[str, Any]]:
-        """List all local files with CivitAI info."""
+        """List all local files with CivitAI info and trigger words."""
         with self.session() as session:
             files = session.exec(select(LocalFile)).all()
             results = []
@@ -178,6 +178,13 @@ class Database:
                 creator = None
                 if model and model.creator_id:
                     creator = session.exec(select(Creator).where(Creator.id == model.creator_id)).first()
+                # Get trigger words for this version
+                triggers: list[str] = []
+                if version:
+                    words = session.exec(
+                        select(TrainedWord).where(TrainedWord.version_id == version.id).order_by(col(TrainedWord.position))
+                    ).all()
+                    triggers = [w.word for w in words]
                 results.append(
                     {
                         "id": f.id,
@@ -192,6 +199,7 @@ class Database:
                         "version_name": version.name if version else None,
                         "base_model": version.base_model if version else None,
                         "creator": creator.username if creator else None,
+                        "triggers": triggers,
                     }
                 )
             return results
