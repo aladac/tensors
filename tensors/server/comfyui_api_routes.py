@@ -45,6 +45,8 @@ class GenerateRequest(PydanticBaseModel):
     sampler: str = Field(default="euler", description="Sampler name")
     scheduler: str = Field(default="normal", description="Scheduler name")
     vae: str | None = Field(default=None, description="VAE model name (defaults to sdxl_vae.safetensors)")
+    lora_name: str | None = Field(default=None, description="LoRA model filename")
+    lora_strength: float = Field(default=0.8, ge=0.0, le=2.0, description="LoRA strength")
 
 
 class GenerateResponse(PydanticBaseModel):
@@ -223,12 +225,14 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
     This uses the built-in SDXL/Flux compatible workflow template.
     For custom workflows, use the /workflow endpoint instead.
     """
+    lora_info = f", lora={request.lora_name}@{request.lora_strength}" if request.lora_name else ""
     logger.info(
-        "Generate request: model=%s, size=%dx%d, steps=%d, prompt=%r",
+        "Generate request: model=%s, size=%dx%d, steps=%d%s, prompt=%r",
         request.model or "default",
         request.width,
         request.height,
         request.steps,
+        lora_info,
         request.prompt[:100] + "..." if len(request.prompt) > 100 else request.prompt,
     )
     if request.negative_prompt:
@@ -246,6 +250,8 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
         sampler=request.sampler,
         scheduler=request.scheduler,
         vae=request.vae,
+        lora_name=request.lora_name,
+        lora_strength=request.lora_strength,
     )
 
     if not result:
