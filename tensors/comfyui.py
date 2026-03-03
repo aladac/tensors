@@ -661,8 +661,8 @@ LORA_LOADER_NODE: dict[str, Any] = {
     },
 }
 
-# Default SDXL/Flux compatible workflow template
-# This is a minimal text-to-image workflow that works with most models
+# Default SDXL/Illustrious/Pony compatible workflow template
+# Uses separate VAE loader for better quality with modern models
 DEFAULT_WORKFLOW_TEMPLATE: dict[str, Any] = {
     "3": {
         "class_type": "KSampler",
@@ -697,13 +697,20 @@ DEFAULT_WORKFLOW_TEMPLATE: dict[str, Any] = {
     },
     "8": {
         "class_type": "VAEDecode",
-        "inputs": {"samples": ["3", 0], "vae": ["4", 2]},
+        "inputs": {"samples": ["3", 0], "vae": ["11", 0]},
     },
     "9": {
         "class_type": "SaveImage",
         "inputs": {"filename_prefix": "comfy", "images": ["8", 0]},
     },
+    "11": {
+        "class_type": "VAELoader",
+        "inputs": {"vae_name": "sdxl_vae.safetensors"},
+    },
 }
+
+# Default VAE for SDXL/Illustrious/Pony models
+DEFAULT_VAE = "sdxl_vae.safetensors"
 
 
 def _build_workflow(
@@ -720,6 +727,7 @@ def _build_workflow(
     lora_name: str | None = None,
     lora_strength: float = 1.0,
     batch_size: int = 1,
+    vae: str | None = None,
 ) -> dict[str, Any]:
     """Build a text-to-image workflow from parameters.
 
@@ -737,6 +745,7 @@ def _build_workflow(
         lora_name: LoRA model filename (optional)
         lora_strength: LoRA strength (default 1.0)
         batch_size: Number of images to generate in one workflow (default 1)
+        vae: VAE filename (defaults to sdxl_vae.safetensors)
 
     Returns:
         ComfyUI workflow dict
@@ -765,6 +774,9 @@ def _build_workflow(
     # Set prompts
     workflow["6"]["inputs"]["text"] = prompt
     workflow["7"]["inputs"]["text"] = negative_prompt
+
+    # Set VAE
+    workflow["11"]["inputs"]["vae_name"] = vae or DEFAULT_VAE
 
     # Inject LoRA loader if specified
     if lora_name:
@@ -806,6 +818,7 @@ def generate_image(
     lora_name: str | None = None,
     lora_strength: float = 1.0,
     batch_size: int = 1,
+    vae: str | None = None,
 ) -> GenerationResult | None:
     """Generate an image using a simple text-to-image workflow.
 
@@ -827,6 +840,7 @@ def generate_image(
         lora_name: LoRA model filename (optional)
         lora_strength: LoRA strength (default 1.0)
         batch_size: Number of images to generate in one workflow (default 1)
+        vae: VAE filename (defaults to sdxl_vae.safetensors)
 
     Returns:
         GenerationResult with image paths, or None if generation failed
@@ -860,6 +874,7 @@ def generate_image(
         lora_name=lora_name,
         lora_strength=lora_strength,
         batch_size=batch_size,
+        vae=vae,
     )
 
     # Run workflow

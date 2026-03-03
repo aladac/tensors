@@ -44,6 +44,7 @@ class GenerateRequest(PydanticBaseModel):
     seed: int = Field(default=-1, description="Random seed (-1 for random)")
     sampler: str = Field(default="euler", description="Sampler name")
     scheduler: str = Field(default="normal", description="Scheduler name")
+    vae: str | None = Field(default=None, description="VAE model name (defaults to sdxl_vae.safetensors)")
 
 
 class GenerateResponse(PydanticBaseModel):
@@ -233,6 +234,7 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
         seed=request.seed,
         sampler=request.sampler,
         scheduler=request.scheduler,
+        vae=request.vae,
     )
 
     if not result:
