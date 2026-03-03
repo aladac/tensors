@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -26,6 +27,15 @@ if TYPE_CHECKING:
     from fastapi.responses import HTMLResponse
 
 __all__ = ["app", "create_app"]
+
+# Configure logging for tensors package
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s:     %(name)s - %(message)s",
+    stream=sys.stdout,
+)
+# Set tensors loggers to INFO
+logging.getLogger("tensors").setLevel(logging.INFO)
 
 logger = logging.getLogger(__name__)
 
