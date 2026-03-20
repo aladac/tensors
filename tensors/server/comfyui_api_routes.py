@@ -236,6 +236,7 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
     scheduler = request.scheduler
     steps = request.steps
     cfg = request.cfg
+    vae = request.vae
 
     if request.model:
         # Look up base_model from database for better family detection
@@ -259,14 +260,17 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
             steps = family_defaults["steps"]
         if request.cfg == 7.0:  # Default value in schema
             cfg = family_defaults["cfg"]
+        if request.vae is None:  # No VAE specified, use family default
+            vae = family_defaults.get("vae")  # None means use checkpoint VAE
 
         logger.debug(
-            "Detected model family: %s (sampler=%s, scheduler=%s, steps=%d, cfg=%.1f)",
+            "Detected model family: %s (sampler=%s, scheduler=%s, steps=%d, cfg=%.1f, vae=%s)",
             detected_family,
             sampler,
             scheduler,
             steps,
             cfg,
+            vae or "checkpoint",
         )
 
     lora_info = f", lora={request.lora_name}@{request.lora_strength}" if request.lora_name else ""
@@ -295,7 +299,7 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
         seed=request.seed,
         sampler=sampler,
         scheduler=scheduler,
-        vae=request.vae,
+        vae=vae,
         lora_name=request.lora_name,
         lora_strength=request.lora_strength,
     )

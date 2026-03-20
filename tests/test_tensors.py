@@ -377,6 +377,36 @@ class TestModelFamilyDetection:
         assert defaults["steps"] == 4
         assert defaults["cfg"] == 1.0
 
+    def test_detect_zimage(self) -> None:
+        """Test detecting ZImageTurbo family."""
+        from tensors.config import detect_model_family
+
+        assert detect_model_family("zimageturbo_v1.safetensors") == "zimage"
+        assert detect_model_family("ZIMAGE_xl.safetensors") == "zimage"
+        assert detect_model_family("model.safetensors", "ZImageTurbo") == "zimage"
+
+    def test_get_model_generation_defaults_zimage(self) -> None:
+        """Test getting generation defaults for ZImageTurbo models."""
+        from tensors.config import get_model_generation_defaults
+
+        defaults = get_model_generation_defaults("zimageturbo_v1.safetensors")
+        assert defaults["family"] == "zimage"
+        assert defaults["sampler"] == "euler"
+        assert defaults["scheduler"] == "simple"
+        assert defaults["steps"] == 4
+        assert defaults["cfg"] == 1.0
+        assert defaults["vae"] == "ae.safetensors"
+
+    def test_flux_uses_ae_vae(self) -> None:
+        """Test that Flux models use ae.safetensors VAE."""
+        from tensors.config import get_model_generation_defaults
+
+        defaults = get_model_generation_defaults("flux1-dev-fp8.safetensors")
+        assert defaults["vae"] == "ae.safetensors"
+
+        defaults_schnell = get_model_generation_defaults("flux1-schnell.safetensors")
+        assert defaults_schnell["vae"] == "ae.safetensors"
+
     def test_get_model_generation_defaults_sdxl_lightning(self) -> None:
         """Test getting generation defaults for SDXL Lightning models."""
         from tensors.config import get_model_generation_defaults

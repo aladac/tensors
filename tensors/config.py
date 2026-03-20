@@ -517,6 +517,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler_ancestral",
         "scheduler": "normal",
         "steps": 25,
+        "vae": "sdxl_vae.safetensors",
     },
     "illustrious": {
         "quality_prefix": "masterpiece, best quality, highres",
@@ -527,6 +528,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler_ancestral",
         "scheduler": "normal",
         "steps": 25,
+        "vae": "sdxl_vae.safetensors",
     },
     "sdxl": {
         "quality_prefix": "",
@@ -537,6 +539,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "dpmpp_2m",
         "scheduler": "karras",
         "steps": 25,
+        "vae": "sdxl_vae.safetensors",
     },
     "sdxl_lightning": {
         "quality_prefix": "",
@@ -547,6 +550,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler",
         "scheduler": "sgm_uniform",
         "steps": 8,  # Lightning models use fewer steps
+        "vae": "sdxl_vae.safetensors",
     },
     "sdxl_turbo": {
         "quality_prefix": "",
@@ -557,6 +561,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler_ancestral",
         "scheduler": "normal",
         "steps": 4,  # Turbo models use very few steps
+        "vae": "sdxl_vae.safetensors",
     },
     "sd15": {
         "quality_prefix": "masterpiece, best quality",
@@ -570,6 +575,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "dpmpp_2m",
         "scheduler": "karras",
         "steps": 20,
+        "vae": None,  # Use checkpoint's built-in VAE
     },
     "sd15_lcm": {
         "quality_prefix": "masterpiece, best quality",
@@ -580,6 +586,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "lcm",
         "scheduler": "normal",
         "steps": 6,
+        "vae": None,  # Use checkpoint's built-in VAE
     },
     "flux": {
         "quality_prefix": "",
@@ -590,6 +597,7 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler",
         "scheduler": "simple",
         "steps": 20,
+        "vae": "ae.safetensors",
     },
     "flux_schnell": {
         "quality_prefix": "",
@@ -600,6 +608,18 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler",
         "scheduler": "simple",
         "steps": 4,  # Schnell is a distilled model, very few steps
+        "vae": "ae.safetensors",
+    },
+    "zimage": {
+        "quality_prefix": "",
+        "negative_prompt": "",  # Turbo models work best without negative prompts
+        "width": 1024,
+        "height": 1024,
+        "cfg": 1.0,  # Very low CFG for turbo
+        "sampler": "euler",
+        "scheduler": "simple",
+        "steps": 4,  # ZImageTurbo is a distilled model
+        "vae": "ae.safetensors",
     },
 }
 
@@ -613,7 +633,7 @@ def detect_model_family(model_name: str, base_model: str | None = None) -> str |
 
     Returns:
         Model family key (pony, illustrious, sdxl, sdxl_lightning, sdxl_turbo,
-        sd15, sd15_lcm, flux, flux_schnell) or None if unknown
+        sd15, sd15_lcm, flux, flux_schnell, zimage) or None if unknown
     """
     name_lower = model_name.lower()
     base_lower = (base_model or "").lower()
@@ -629,6 +649,9 @@ def detect_model_family(model_name: str, base_model: str | None = None) -> str |
             return "flux_schnell"
         if "flux" in base_lower:
             return "flux"
+        # ZImageTurbo
+        if "zimage" in base_lower:
+            return "zimage"
         # SD 1.5 variants
         if "lcm" in base_lower and ("sd 1.5" in base_lower or "sd 1.4" in base_lower):
             return "sd15_lcm"
@@ -652,6 +675,9 @@ def detect_model_family(model_name: str, base_model: str | None = None) -> str |
         return "flux_schnell"
     if "flux" in name_lower:
         return "flux"
+    # ZImageTurbo
+    if "zimage" in name_lower:
+        return "zimage"
     # SDXL variants
     if "lightning" in name_lower and any(x in name_lower for x in ["sdxl", "xl"]):
         return "sdxl_lightning"

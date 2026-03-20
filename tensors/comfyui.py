@@ -775,8 +775,15 @@ def _build_workflow(
     workflow["6"]["inputs"]["text"] = prompt
     workflow["7"]["inputs"]["text"] = negative_prompt
 
-    # Set VAE
-    workflow["11"]["inputs"]["vae_name"] = vae or DEFAULT_VAE
+    # Set VAE - use external VAE if specified, otherwise use checkpoint's built-in VAE
+    if vae:
+        # Use external VAE loader (node 11)
+        workflow["11"]["inputs"]["vae_name"] = vae
+    else:
+        # Use VAE from checkpoint (node 4, output index 2) - works for SD 1.5 models
+        # Remove VAELoader node and connect VAEDecode directly to checkpoint
+        del workflow["11"]
+        workflow["8"]["inputs"]["vae"] = ["4", 2]
 
     # Inject LoRA loader if specified
     if lora_name:
