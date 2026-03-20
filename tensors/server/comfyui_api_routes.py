@@ -20,6 +20,8 @@ from tensors.comfyui import (
     get_system_stats,
     queue_prompt,
 )
+from tensors.config import get_model_generation_defaults
+from tensors.db import Database
 
 logger = logging.getLogger(__name__)
 
@@ -224,14 +226,52 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
 
     This uses the built-in SDXL/Flux compatible workflow template.
     For custom workflows, use the /workflow endpoint instead.
+
+    Sampler and scheduler are auto-selected based on model family if not specified
+    (when using default values). Family detection uses the model filename and
+    database metadata.
     """
+    # Get family-specific defaults if model is specified
+    sampler = request.sampler
+    scheduler = request.scheduler
+    steps = request.steps
+    cfg = request.cfg
+
+    if request.model:
+        # Look up base_model from database for better family detection
+        try:
+            db = Database()
+            base_model = db.get_base_model_by_filename(request.model)
+        except Exception:
+            base_model = None
+
+        # Get family defaults
+        family_defaults = get_model_generation_defaults(request.model, base_model)
+        detected_family = family_defaults.get("family")
+
+        # Apply family defaults only if request uses default values
+        # (allows explicit override by user)
+        if request.sampler == "euler":  # Default value in schema
+            sampler = family_defaults["sampler"]
+        if request.scheduler == "normal":  # Default value in schema
+            scheduler = family_defaults["scheduler"]
+        if request.steps == 20:  # Default value in schema
+            steps = family_defaults["steps"]
+        if request.cfg == 7.0:  # Default value in schema
+            cfg = family_defaults["cfg"]
+
+        logger.debug("Detected model family: %s (sampler=%s, scheduler=%s, steps=%d, cfg=%.1f)",
+                     detected_family, sampler, scheduler, steps, cfg)
+
     lora_info = f", lora={request.lora_name}@{request.lora_strength}" if request.lora_name else ""
     logger.info(
-        "Generate request: model=%s, size=%dx%d, steps=%d%s, prompt=%r",
+        "Generate request: model=%s, size=%dx%d, steps=%d, sampler=%s, scheduler=%s%s, prompt=%r",
         request.model or "default",
         request.width,
         request.height,
-        request.steps,
+        steps,
+        sampler,
+        scheduler,
         lora_info,
         request.prompt[:100] + "..." if len(request.prompt) > 100 else request.prompt,
     )
@@ -244,11 +284,11 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
         model=request.model,
         width=request.width,
         height=request.height,
-        steps=request.steps,
-        cfg=request.cfg,
+        steps=steps,
+        cfg=cfg,
         seed=request.seed,
-        sampler=request.sampler,
-        scheduler=request.scheduler,
+        sampler=sampler,
+        scheduler=scheduler,
         vae=request.vae,
         lora_name=request.lora_name,
         lora_strength=request.lora_strength,

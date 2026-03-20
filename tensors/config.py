@@ -514,6 +514,9 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "height": 1024,
         "cfg": 7.0,
         "clip_skip": 2,
+        "sampler": "euler_ancestral",
+        "scheduler": "normal",
+        "steps": 25,
     },
     "illustrious": {
         "quality_prefix": "masterpiece, best quality, highres",
@@ -521,6 +524,9 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "width": 1024,
         "height": 1024,
         "cfg": 6.0,
+        "sampler": "euler_ancestral",
+        "scheduler": "normal",
+        "steps": 25,
     },
     "sdxl": {
         "quality_prefix": "",
@@ -528,6 +534,29 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "width": 1024,
         "height": 1024,
         "cfg": 7.0,
+        "sampler": "dpmpp_2m",
+        "scheduler": "karras",
+        "steps": 25,
+    },
+    "sdxl_lightning": {
+        "quality_prefix": "",
+        "negative_prompt": "ugly, deformed, bad anatomy, bad hands, extra fingers, missing fingers, blurry, watermark",
+        "width": 1024,
+        "height": 1024,
+        "cfg": 2.0,
+        "sampler": "euler",
+        "scheduler": "sgm_uniform",
+        "steps": 8,  # Lightning models use fewer steps
+    },
+    "sdxl_turbo": {
+        "quality_prefix": "",
+        "negative_prompt": "",  # Turbo models work best without negative prompts
+        "width": 1024,
+        "height": 1024,
+        "cfg": 1.0,  # Very low CFG for turbo
+        "sampler": "euler_ancestral",
+        "scheduler": "normal",
+        "steps": 4,  # Turbo models use very few steps
     },
     "sd15": {
         "quality_prefix": "masterpiece, best quality",
@@ -538,6 +567,19 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "width": 512,
         "height": 512,
         "cfg": 7.0,
+        "sampler": "dpmpp_2m",
+        "scheduler": "karras",
+        "steps": 20,
+    },
+    "sd15_lcm": {
+        "quality_prefix": "masterpiece, best quality",
+        "negative_prompt": "",  # LCM works best with minimal negative
+        "width": 512,
+        "height": 512,
+        "cfg": 1.5,
+        "sampler": "lcm",
+        "scheduler": "normal",
+        "steps": 6,
     },
     "flux": {
         "quality_prefix": "",
@@ -545,6 +587,19 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "width": 1024,
         "height": 1024,
         "cfg": 3.5,
+        "sampler": "euler",
+        "scheduler": "simple",
+        "steps": 20,
+    },
+    "flux_schnell": {
+        "quality_prefix": "",
+        "negative_prompt": "",
+        "width": 1024,
+        "height": 1024,
+        "cfg": 1.0,  # Schnell uses low CFG
+        "sampler": "euler",
+        "scheduler": "simple",
+        "steps": 4,  # Schnell is a distilled model, very few steps
     },
 }
 
@@ -557,7 +612,8 @@ def detect_model_family(model_name: str, base_model: str | None = None) -> str |
         base_model: Optional CivitAI base_model field (e.g., "Pony", "SDXL 1.0")
 
     Returns:
-        Model family key (pony, illustrious, sdxl, sd15, flux) or None if unknown
+        Model family key (pony, illustrious, sdxl, sdxl_lightning, sdxl_turbo,
+        sd15, sd15_lcm, flux, flux_schnell) or None if unknown
     """
     name_lower = model_name.lower()
     base_lower = (base_model or "").lower()
@@ -568,26 +624,87 @@ def detect_model_family(model_name: str, base_model: str | None = None) -> str |
             return "pony"
         if "illustrious" in base_lower:
             return "illustrious"
+        # Flux variants (check specific variants before generic flux)
+        if "flux" in base_lower and "schnell" in base_lower:
+            return "flux_schnell"
         if "flux" in base_lower:
             return "flux"
+        # SD 1.5 variants
+        if "lcm" in base_lower and ("sd 1.5" in base_lower or "sd 1.4" in base_lower):
+            return "sd15_lcm"
         if "sd 1.5" in base_lower or "sd 1.4" in base_lower:
             return "sd15"
+        # SDXL variants (check specific variants before generic sdxl)
+        if "sdxl" in base_lower and "lightning" in base_lower:
+            return "sdxl_lightning"
+        if "sdxl" in base_lower and "turbo" in base_lower:
+            return "sdxl_turbo"
         if "sdxl" in base_lower:
             return "sdxl"
 
-    # Fall back to filename heuristics
+    # Fall back to filename heuristics (check specific variants first)
     if "pony" in name_lower:
         return "pony"
     if "illustrious" in name_lower or "noob" in name_lower:
         return "illustrious"
+    # Flux variants
+    if "flux" in name_lower and "schnell" in name_lower:
+        return "flux_schnell"
     if "flux" in name_lower:
         return "flux"
+    # SDXL variants
+    if "lightning" in name_lower and any(x in name_lower for x in ["sdxl", "xl"]):
+        return "sdxl_lightning"
+    if "turbo" in name_lower and any(x in name_lower for x in ["sdxl", "xl"]):
+        return "sdxl_turbo"
+    # SD 1.5 variants
+    if "lcm" in name_lower and any(x in name_lower for x in ["sd15", "sd1.5", "sd_1.5"]):
+        return "sd15_lcm"
     if any(x in name_lower for x in ["sd15", "sd1.5", "sd_1.5", "dreamshaper", "realistic", "deliberate", "anything"]):
         return "sd15"
     if any(x in name_lower for x in ["sdxl", "xl_"]):
         return "sdxl"
 
     return None
+
+
+def get_model_generation_defaults(model_name: str, base_model: str | None = None) -> dict[str, Any]:
+    """Get generation defaults for a model based on its family.
+
+    Detects the model family and returns appropriate default settings for:
+    - sampler, scheduler, steps, cfg, width, height
+    - quality_prefix, negative_prompt
+
+    Args:
+        model_name: Filename of the model
+        base_model: Optional CivitAI base_model field
+
+    Returns:
+        Dict with generation defaults. Falls back to global SDXL defaults if family unknown.
+    """
+    family = detect_model_family(model_name, base_model)
+
+    # Get family-specific defaults or fall back to SDXL defaults
+    if family and family in MODEL_FAMILY_DEFAULTS:
+        defaults = dict(MODEL_FAMILY_DEFAULTS[family])
+    else:
+        # Default to SDXL settings for unknown models
+        defaults = dict(MODEL_FAMILY_DEFAULTS.get("sdxl", {}))
+
+    # Ensure all expected keys are present with fallbacks
+    defaults.setdefault("sampler", COMFYUI_DEFAULT_SAMPLER)
+    defaults.setdefault("scheduler", COMFYUI_DEFAULT_SCHEDULER)
+    defaults.setdefault("steps", COMFYUI_DEFAULT_STEPS)
+    defaults.setdefault("cfg", COMFYUI_DEFAULT_CFG)
+    defaults.setdefault("width", COMFYUI_DEFAULT_WIDTH)
+    defaults.setdefault("height", COMFYUI_DEFAULT_HEIGHT)
+    defaults.setdefault("quality_prefix", "")
+    defaults.setdefault("negative_prompt", "")
+
+    # Include the detected family for reference
+    defaults["family"] = family
+
+    return defaults
 
 
 def get_comfyui_url() -> str:
