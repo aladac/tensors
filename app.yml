@@ -1,4 +1,7 @@
 runtime: python
 dockerfile: Dockerfile
-cmd: tsr serve --host 0.0.0.0 --port 5000 --sd-server http://172.17.0.1:1234
 port: 5000
+cmd: /app/start.sh
+addons:
+  - img
+  - xfs-xl

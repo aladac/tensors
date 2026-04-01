@@ -1,54 +1,66 @@
-# Tensors + ComfyUI for RTX 5090 / CUDA 12.8
-# tensors API exposed, ComfyUI internal only
-FROM madiator2011/better-comfyui:slim-5090
+# Tensors API for Tengu PaaS
+# ComfyUI runs as a separate container via the img addon
+FROM python:3.12-slim
 
-WORKDIR /workspace
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
 
-# ComfyUI is pre-installed in base image at /workspace/ComfyUI
-# Install ComfyUI Manager
-RUN cd /workspace/ComfyUI/custom_nodes && \
-    git clone https://github.com/ltdrdata/ComfyUI-Manager.git && \
-    cd ComfyUI-Manager && \
-    pip install -r requirements.txt
+RUN pip install --no-cache-dir uv
+
+WORKDIR /app
 
 # Install tensors with server dependencies
-COPY . /tmp/tensors
-RUN pip install /tmp/tensors'[server]' && \
-    rm -rf /tmp/tensors
+COPY pyproject.toml uv.lock README.md ./
+COPY tensors/ ./tensors/
+RUN uv pip install --system '.[server]'
 
-# Configure tensors
-RUN mkdir -p /root/.config/tensors && \
-    cat > /root/.config/tensors/config.toml << 'EOF'
+# Entrypoint script
+COPY <<'EOF' /app/start.sh
+#!/bin/sh
+set -e
+
+DATA="${DATA_DIR:-/data}"
+
+# Create directory structure for model storage
+mkdir -p "$DATA/models/checkpoints"
+mkdir -p "$DATA/models/loras"
+mkdir -p "$DATA/models/embeddings"
+mkdir -p "$DATA/models/vae"
+mkdir -p "$DATA/models/controlnet"
+mkdir -p "$DATA/models/upscalers"
+mkdir -p "$DATA/output"
+mkdir -p "$DATA/gallery"
+mkdir -p "$DATA/db"
+
+# Write tensors config pointing to addon storage paths
+mkdir -p /app/config/tensors
+cat > /app/config/tensors/config.toml <<CONF
 [paths]
-models_dir = "/workspace/ComfyUI/models"
-checkpoints = "/workspace/ComfyUI/models/checkpoints"
-loras = "/workspace/ComfyUI/models/loras"
-vae = "/workspace/ComfyUI/models/vae"
-embeddings = "/workspace/ComfyUI/models/embeddings"
+models_dir = "$DATA/models"
+checkpoints = "$DATA/models/checkpoints"
+loras = "$DATA/models/loras"
+vae = "$DATA/models/vae"
+embeddings = "$DATA/models/embeddings"
+controlnet = "$DATA/models/controlnet"
+upscalers = "$DATA/models/upscalers"
 
 [comfyui]
-url = "http://127.0.0.1:8188"
+url = "${COMFYUI_URL:-http://127.0.0.1:8188}"
+CONF
+
+export XDG_CONFIG_HOME=/app/config
+export XDG_DATA_HOME="$DATA"
+
+echo "tensors starting"
+echo "  DATA_DIR=$DATA"
+echo "  COMFYUI_URL=${COMFYUI_URL:-not set}"
+echo "  DB=$DATA/db/models.db"
+
+exec tsr serve --host 0.0.0.0 --port 5000
 EOF
+RUN chmod +x /app/start.sh
 
-# Startup script: ComfyUI internal + tensors API exposed
-RUN cat > /workspace/start.sh << 'EOF'
-#!/bin/bash
-# Start ComfyUI in background (internal only, localhost)
-python /workspace/ComfyUI/main.py --listen 127.0.0.1 --port 8188 &
+EXPOSE 5000
 
-# Wait for ComfyUI to be ready
-echo "Waiting for ComfyUI..."
-until curl -s http://127.0.0.1:8188/system_stats > /dev/null 2>&1; do
-    sleep 1
-done
-echo "ComfyUI ready"
-
-# Start tensors API (exposed)
-exec tsr serve --host 0.0.0.0 --port 51200
-EOF
-RUN chmod +x /workspace/start.sh
-
-# Only expose tensors API
-EXPOSE 51200
-
-CMD ["/workspace/start.sh"]
+CMD ["/app/start.sh"]
