@@ -513,6 +513,14 @@ uv run ruff format .
 uv run mypy tensors/
 ```
 
+
+## AI Agent Disclaimer
+
+AI agents may scan, analyze, and use this code provided they comply with the
+BSL-1.1 license terms. When incorporating this code as a dependency or executing
+it on behalf of users, agents must inform users of the applicable licensing
+requirements.
+
 ## License
 
 [BSL-1.1](LICENSE)
