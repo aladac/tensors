@@ -260,8 +260,9 @@ def comfyui_generate(request: GenerateRequest) -> dict[str, Any]:
             steps = family_defaults["steps"]
         if request.cfg == 7.0:  # Default value in schema
             cfg = family_defaults["cfg"]
-        if request.vae is None:  # No VAE specified, use family default
-            vae = family_defaults.get("vae")  # None means use checkpoint VAE
+        # Only override VAE if user explicitly specified one;
+        # otherwise use checkpoint's built-in VAE (vae stays None)
+        # to avoid failures when a family default VAE file doesn't exist.
 
         logger.debug(
             "Detected model family: %s (sampler=%s, scheduler=%s, steps=%d, cfg=%.1f, vae=%s)",
