@@ -709,47 +709,65 @@ DEFAULT_WORKFLOW_TEMPLATE: dict[str, Any] = {
     },
 }
 
-# Default VAE for SDXL/Illustrious/Pony models
-DEFAULT_VAE = "sdxl_vae.safetensors"
-
-
 def _build_workflow(
     prompt: str,
     negative_prompt: str = "",
     model: str | None = None,
-    width: int = 1024,
-    height: int = 1024,
-    steps: int = 20,
-    cfg: float = 7.0,
+    width: int | None = None,
+    height: int | None = None,
+    steps: int | None = None,
+    cfg: float | None = None,
     seed: int = -1,
-    sampler: str = "euler",
-    scheduler: str = "normal",
+    sampler: str | None = None,
+    scheduler: str | None = None,
     lora_name: str | None = None,
     lora_strength: float = 1.0,
     batch_size: int = 1,
     vae: str | None = None,
+    orientation: str = "square",
 ) -> dict[str, Any]:
     """Build a text-to-image workflow from parameters.
+
+    Parameters set to None are auto-resolved from the checkpoint's family preset
+    via config.get_model_generation_defaults(). User-provided values always win.
 
     Args:
         prompt: Positive prompt text
         negative_prompt: Negative prompt text
         model: Checkpoint filename (if None, uses first available)
-        width: Image width
-        height: Image height
-        steps: Number of sampling steps
-        cfg: CFG scale
+        width: Image width (None = use preset for orientation)
+        height: Image height (None = use preset for orientation)
+        steps: Number of sampling steps (None = use preset)
+        cfg: CFG scale (None = use preset)
         seed: Random seed (-1 for random)
-        sampler: Sampler name
-        scheduler: Scheduler name
+        sampler: Sampler name (None = use preset)
+        scheduler: Scheduler name (None = use preset)
         lora_name: LoRA model filename (optional)
         lora_strength: LoRA strength (default 1.0)
         batch_size: Number of images to generate in one workflow (default 1)
-        vae: VAE filename (defaults to sdxl_vae.safetensors)
+        vae: VAE filename (None = use preset)
+        orientation: Resolution orientation: "square", "portrait", or "landscape"
 
     Returns:
         ComfyUI workflow dict
     """
+    from tensors.config import get_model_generation_defaults, resolve_orientation  # noqa: PLC0415
+
+    # Get preset defaults for this checkpoint family
+    defaults = get_model_generation_defaults(model or "") if model else get_model_generation_defaults("")
+
+    # Resolve orientation-based resolution
+    res_w, res_h = resolve_orientation(defaults.get("family"), orientation)
+
+    # Merge: user overrides > preset defaults
+    resolved_sampler = sampler if sampler is not None else defaults.get("sampler", "euler")
+    resolved_scheduler = scheduler if scheduler is not None else defaults.get("scheduler", "normal")
+    resolved_cfg = cfg if cfg is not None else defaults.get("cfg", 7.0)
+    resolved_steps = steps if steps is not None else defaults.get("steps", 20)
+    resolved_width = width if width is not None else res_w
+    resolved_height = height if height is not None else res_h
+    resolved_vae = vae if vae is not None else defaults.get("vae")
+
     workflow = copy.deepcopy(DEFAULT_WORKFLOW_TEMPLATE)
 
     # Set seed (random if -1)
@@ -757,30 +775,30 @@ def _build_workflow(
 
     # Update KSampler settings
     workflow["3"]["inputs"]["seed"] = actual_seed
-    workflow["3"]["inputs"]["steps"] = steps
-    workflow["3"]["inputs"]["cfg"] = cfg
-    workflow["3"]["inputs"]["sampler_name"] = sampler
-    workflow["3"]["inputs"]["scheduler"] = scheduler
+    workflow["3"]["inputs"]["steps"] = resolved_steps
+    workflow["3"]["inputs"]["cfg"] = resolved_cfg
+    workflow["3"]["inputs"]["sampler_name"] = resolved_sampler
+    workflow["3"]["inputs"]["scheduler"] = resolved_scheduler
 
     # Set model
     if model:
         workflow["4"]["inputs"]["ckpt_name"] = model
 
     # Set dimensions and batch size
-    workflow["5"]["inputs"]["width"] = width
-    workflow["5"]["inputs"]["height"] = height
+    workflow["5"]["inputs"]["width"] = resolved_width
+    workflow["5"]["inputs"]["height"] = resolved_height
     workflow["5"]["inputs"]["batch_size"] = batch_size
 
     # Set prompts
     workflow["6"]["inputs"]["text"] = prompt
     workflow["7"]["inputs"]["text"] = negative_prompt
 
-    # Set VAE - use external VAE if specified, otherwise use checkpoint's built-in VAE
-    if vae:
+    # Set VAE - use preset VAE if available, otherwise use checkpoint's built-in
+    if resolved_vae:
         # Use external VAE loader (node 11)
-        workflow["11"]["inputs"]["vae_name"] = vae
+        workflow["11"]["inputs"]["vae_name"] = resolved_vae
     else:
-        # Use VAE from checkpoint (node 4, output index 2) - works for SD 1.5 models
+        # Use VAE from checkpoint (node 4, output index 2) - fallback for unknown models
         # Remove VAELoader node and connect VAEDecode directly to checkpoint
         del workflow["11"]
         workflow["8"]["inputs"]["vae"] = ["4", 2]
@@ -812,13 +830,13 @@ def generate_image(
     url: str | None = None,
     negative_prompt: str = "",
     model: str | None = None,
-    width: int = 1024,
-    height: int = 1024,
-    steps: int = 20,
-    cfg: float = 7.0,
+    width: int | None = None,
+    height: int | None = None,
+    steps: int | None = None,
+    cfg: float | None = None,
     seed: int = -1,
-    sampler: str = "euler",
-    scheduler: str = "normal",
+    sampler: str | None = None,
+    scheduler: str | None = None,
     console: Console | None = None,
     on_progress: ProgressCallback | None = None,
     timeout: float = 600.0,
@@ -826,28 +844,33 @@ def generate_image(
     lora_strength: float = 1.0,
     batch_size: int = 1,
     vae: str | None = None,
+    orientation: str = "square",
 ) -> GenerationResult | None:
     """Generate an image using a simple text-to-image workflow.
+
+    Parameters set to None are auto-resolved from the checkpoint's family preset.
+    User-provided values always override preset defaults.
 
     Args:
         prompt: Positive prompt text
         url: ComfyUI base URL
         negative_prompt: Negative prompt text
         model: Checkpoint filename (if None, must be pre-loaded in ComfyUI)
-        width: Image width
-        height: Image height
-        steps: Number of sampling steps
-        cfg: CFG scale
+        width: Image width (None = use preset for orientation)
+        height: Image height (None = use preset for orientation)
+        steps: Number of sampling steps (None = use preset)
+        cfg: CFG scale (None = use preset)
         seed: Random seed (-1 for random)
-        sampler: Sampler name (euler, dpm_2, etc.)
-        scheduler: Scheduler name (normal, karras, etc.)
+        sampler: Sampler name (None = use preset)
+        scheduler: Scheduler name (None = use preset)
         console: Rich console for progress output
         on_progress: Optional callback for progress updates
         timeout: Maximum wait time in seconds
         lora_name: LoRA model filename (optional)
         lora_strength: LoRA strength (default 1.0)
         batch_size: Number of images to generate in one workflow (default 1)
-        vae: VAE filename (defaults to sdxl_vae.safetensors)
+        vae: VAE filename (None = use preset)
+        orientation: Resolution orientation: "square", "portrait", or "landscape"
 
     Returns:
         GenerationResult with image paths, or None if generation failed
@@ -882,6 +905,7 @@ def generate_image(
         lora_strength=lora_strength,
         batch_size=batch_size,
         vae=vae,
+        orientation=orientation,
     )
 
     # Run workflow

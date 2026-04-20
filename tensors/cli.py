@@ -8,6 +8,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated, Any
 
+import click
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -769,36 +770,115 @@ def serve(
 # =============================================================================
 
 
-@app.command()
+@app.command(context_settings={"allow_extra_args": False})
 def generate(  # noqa: PLR0915
-    prompt: Annotated[str, typer.Argument(help="Positive prompt text")],
+    ctx: typer.Context,
+    prompt: Annotated[str | None, typer.Argument(help="Positive prompt text", show_default=False)] = None,
     model: Annotated[str | None, typer.Option("-m", "--model", help="Checkpoint model name")] = None,
-    width: Annotated[int, typer.Option("-W", "--width", help="Image width")] = 1024,
-    height: Annotated[int, typer.Option("-H", "--height", help="Image height")] = 1024,
-    steps: Annotated[int, typer.Option("--steps", help="Sampling steps")] = 20,
-    cfg: Annotated[float, typer.Option("--cfg", help="CFG scale")] = 7.0,
+    width: Annotated[int | None, typer.Option("-W", "--width", help="Image width (auto from checkpoint)")] = None,
+    height: Annotated[int | None, typer.Option("-H", "--height", help="Image height (auto from checkpoint)")] = None,
+    steps: Annotated[int | None, typer.Option("--steps", help="Sampling steps (auto from checkpoint)")] = None,
+    cfg: Annotated[float | None, typer.Option("--cfg", help="CFG scale (auto from checkpoint)")] = None,
     seed: Annotated[int, typer.Option("--seed", "-s", help="Random seed (-1 for random)")] = -1,
-    sampler: Annotated[str, typer.Option("--sampler", help="Sampler name")] = "euler",
-    scheduler: Annotated[str, typer.Option("--scheduler", help="Scheduler name")] = "normal",
-    vae: Annotated[str | None, typer.Option("--vae", help="VAE model name")] = None,
+    sampler: Annotated[str | None, typer.Option("--sampler", help="Sampler name (auto from checkpoint)")] = None,
+    scheduler: Annotated[str | None, typer.Option("--scheduler", help="Scheduler name (auto from checkpoint)")] = None,
+    vae: Annotated[str | None, typer.Option("--vae", help="VAE model name (auto from checkpoint)")] = None,
+    orientation: Annotated[str, typer.Option("-O", "--orientation", help="Resolution: square, portrait, landscape")] = "square",
     lora: Annotated[str | None, typer.Option("-l", "--lora", help="LoRA model name")] = None,
     lora_strength: Annotated[float, typer.Option("--lora-strength", help="LoRA strength")] = 0.8,
     negative: Annotated[str, typer.Option("-n", "--negative-prompt", help="Negative prompt")] = "",
     output: Annotated[Path | None, typer.Option("-o", "--output", help="Save path (default: current dir)")] = None,
     remote: Annotated[str | None, typer.Option("-r", "--remote", help="Remote server name or URL")] = None,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
+    json_input: Annotated[
+        str | None, typer.Option("--input", "-I", help="JSON params (keys match CLI options)")
+    ] = None,
 ) -> None:
     """Generate an image using text-to-image.
 
     Calls ComfyUI directly when local, or the remote tensors API when --remote is given.
+    Accepts --input with a JSON object whose keys match CLI option names. CLI flags override JSON values.
 
     Examples:
         tsr generate "a cat on a windowsill"
         tsr generate "portrait photo" -m "flux1-dev-fp8.safetensors" --steps 30
         tsr generate "cyberpunk city" -o output.png
         tsr generate "landscape" --remote junkpile
+        tsr generate --input '{"prompt": "a mech", "model": "flux1-dev-fp8.safetensors", "steps": 30}'
     """
     import random as rng  # noqa: PLC0415
+
+    # ---- JSON input merging ----
+    if json_input is not None:
+        # Support file paths and raw JSON strings
+        json_path = Path(json_input)
+        if json_path.is_file():
+            json_text = json_path.read_text()
+        elif json_input.lstrip().startswith("{"):
+            json_text = json_input
+        else:
+            console.print(f"[red]Not a JSON string or file:[/red] {json_input}")
+            raise typer.Exit(1)
+
+        try:
+            ji = json.loads(json_text)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid JSON input:[/red] {e}")
+            raise typer.Exit(1) from e
+
+        if not isinstance(ji, dict):
+            console.print("[red]JSON input must be an object[/red]")
+            raise typer.Exit(1)
+
+        # Map JSON keys to parameter names (handle aliases)
+        key_map = {"negative_prompt": "negative", "lora_name": "lora"}
+        mapped: dict[str, Any] = {}
+        for k, v in ji.items():
+            mapped[key_map.get(k, k)] = v
+
+        # Determine which CLI params the user explicitly set
+        click_ctx = ctx._context if hasattr(ctx, "_context") else ctx
+        explicit = {
+            p.name
+            for p in click_ctx.command.params
+            if click_ctx.get_parameter_source(p.name) == click.core.ParameterSource.COMMANDLINE
+        } if hasattr(click_ctx, "get_parameter_source") else set()
+
+        # Apply JSON values for anything not explicitly set on CLI
+        if "prompt" in mapped and ("prompt" not in explicit and prompt is None):
+            prompt = mapped["prompt"]
+        if "model" in mapped and "model" not in explicit:
+            model = mapped["model"]
+        if "width" in mapped and "width" not in explicit:
+            width = int(mapped["width"])
+        if "height" in mapped and "height" not in explicit:
+            height = int(mapped["height"])
+        if "steps" in mapped and "steps" not in explicit:
+            steps = int(mapped["steps"])
+        if "cfg" in mapped and "cfg" not in explicit:
+            cfg = float(mapped["cfg"])
+        if "seed" in mapped and "seed" not in explicit:
+            seed = int(mapped["seed"])
+        if "sampler" in mapped and "sampler" not in explicit:
+            sampler = mapped["sampler"]
+        if "scheduler" in mapped and "scheduler" not in explicit:
+            scheduler = mapped["scheduler"]
+        if "vae" in mapped and "vae" not in explicit:
+            vae = mapped["vae"]
+        if "lora" in mapped and "lora" not in explicit:
+            lora = mapped["lora"]
+        if "lora_strength" in mapped and "lora_strength" not in explicit:
+            lora_strength = float(mapped["lora_strength"])
+        if "negative" in mapped and "negative" not in explicit:
+            negative = mapped["negative"]
+        if "output" in mapped and "output" not in explicit:
+            output = Path(mapped["output"])
+        if "remote" in mapped and "remote" not in explicit:
+            remote = mapped["remote"]
+
+    if not prompt:
+        console.print("[red]Prompt is required (as argument or in --input JSON)[/red]")
+        raise typer.Exit(1)
 
     from tensors.config import resolve_remote as do_resolve_remote  # noqa: PLC0415
 
@@ -883,6 +963,7 @@ def generate(  # noqa: PLR0915
             lora_name=lora,
             lora_strength=lora_strength,
             vae=vae,
+            orientation=orientation,
         )
 
         if not result_local:
@@ -1576,13 +1657,14 @@ def comfy_generate(  # noqa: PLR0915
     url: Annotated[str | None, typer.Option("--url", "-u", help="ComfyUI server URL")] = None,
     negative: Annotated[str, typer.Option("-n", "--negative", help="Negative prompt")] = "",
     model: Annotated[str | None, typer.Option("-m", "--model", help="Checkpoint model name")] = None,
-    width: Annotated[int, typer.Option("-W", "--width", help="Image width")] = 1024,
-    height: Annotated[int, typer.Option("-H", "--height", help="Image height")] = 1024,
-    steps: Annotated[int, typer.Option("--steps", help="Sampling steps")] = 20,
-    cfg: Annotated[float, typer.Option("--cfg", help="CFG scale")] = 7.0,
+    width: Annotated[int | None, typer.Option("-W", "--width", help="Image width (auto from checkpoint)")] = None,
+    height: Annotated[int | None, typer.Option("-H", "--height", help="Image height (auto from checkpoint)")] = None,
+    steps: Annotated[int | None, typer.Option("--steps", help="Sampling steps (auto from checkpoint)")] = None,
+    cfg: Annotated[float | None, typer.Option("--cfg", help="CFG scale (auto from checkpoint)")] = None,
     seed: Annotated[int, typer.Option("--seed", "-s", help="Random seed (-1 for random)")] = -1,
-    sampler: Annotated[str, typer.Option("--sampler", help="Sampler name")] = "euler",
-    scheduler: Annotated[str, typer.Option("--scheduler", help="Scheduler name")] = "normal",
+    sampler: Annotated[str | None, typer.Option("--sampler", help="Sampler name (auto from checkpoint)")] = None,
+    scheduler: Annotated[str | None, typer.Option("--scheduler", help="Scheduler name (auto from checkpoint)")] = None,
+    orientation: Annotated[str, typer.Option("-O", "--orientation", help="Resolution: square, portrait, landscape")] = "square",
     output: Annotated[Path | None, typer.Option("-o", "--output", help="Output file path")] = None,
     count: Annotated[int, typer.Option("-c", "--count", help="Number of images to generate")] = 1,
     lora: Annotated[str | None, typer.Option("-l", "--lora", help="LoRA model name")] = None,
@@ -1686,6 +1768,7 @@ def comfy_generate(  # noqa: PLR0915
         lora_name=lora,
         lora_strength=lora_strength,
         batch_size=count,
+        orientation=orientation,
     )
 
     if not result:

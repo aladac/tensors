@@ -356,7 +356,7 @@ class TestModelFamilyDetection:
         assert defaults["sampler"] == "euler_ancestral"
         assert defaults["scheduler"] == "normal"
         assert defaults["steps"] == 25
-        assert defaults["cfg"] == 7.0
+        assert defaults["cfg"] == 6.5
 
     def test_get_model_generation_defaults_flux(self) -> None:
         """Test getting generation defaults for Flux models."""

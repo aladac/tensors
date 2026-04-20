@@ -512,29 +512,35 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "negative_prompt": "score_5, score_4, ugly, deformed, blurry, bad anatomy, bad hands, missing fingers",
         "width": 1024,
         "height": 1024,
-        "cfg": 7.0,
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
+        "cfg": 6.5,
         "clip_skip": 2,
         "sampler": "euler_ancestral",
         "scheduler": "normal",
         "steps": 25,
-        "vae": "sdxl_vae.safetensors",
+        "vae": "ponyStandardVAE_v10.safetensors",
     },
     "illustrious": {
         "quality_prefix": "masterpiece, best quality, highres",
         "negative_prompt": "worst quality, bad quality, low quality, lowres, bad anatomy, bad hands, jpeg artifacts, watermark",
         "width": 1024,
         "height": 1024,
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
         "cfg": 6.0,
         "sampler": "euler_ancestral",
         "scheduler": "normal",
         "steps": 25,
-        "vae": "sdxl_vae.safetensors",
+        "vae": "illustriousXLV20_v10.safetensors",
     },
     "sdxl": {
         "quality_prefix": "",
         "negative_prompt": "ugly, deformed, bad anatomy, bad hands, extra fingers, missing fingers, blurry, watermark",
         "width": 1024,
         "height": 1024,
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
         "cfg": 7.0,
         "sampler": "dpmpp_2m",
         "scheduler": "karras",
@@ -546,21 +552,25 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "negative_prompt": "ugly, deformed, bad anatomy, bad hands, extra fingers, missing fingers, blurry, watermark",
         "width": 1024,
         "height": 1024,
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
         "cfg": 2.0,
         "sampler": "euler",
         "scheduler": "sgm_uniform",
-        "steps": 8,  # Lightning models use fewer steps
+        "steps": 8,
         "vae": "sdxl_vae.safetensors",
     },
     "sdxl_turbo": {
         "quality_prefix": "",
-        "negative_prompt": "",  # Turbo models work best without negative prompts
+        "negative_prompt": "",
         "width": 1024,
         "height": 1024,
-        "cfg": 1.0,  # Very low CFG for turbo
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
+        "cfg": 1.0,
         "sampler": "euler_ancestral",
         "scheduler": "normal",
-        "steps": 4,  # Turbo models use very few steps
+        "steps": 4,
         "vae": "sdxl_vae.safetensors",
     },
     "sd15": {
@@ -571,28 +581,34 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         ),
         "width": 512,
         "height": 512,
+        "portrait": (512, 768),
+        "landscape": (768, 512),
         "cfg": 7.0,
-        "sampler": "dpmpp_2m",
-        "scheduler": "karras",
-        "steps": 20,
-        "vae": None,  # Use checkpoint's built-in VAE
+        "sampler": "euler_ancestral",
+        "scheduler": "normal",
+        "steps": 25,
+        "vae": "vae-ft-mse-840000-ema-pruned.safetensors",
     },
     "sd15_lcm": {
         "quality_prefix": "masterpiece, best quality",
-        "negative_prompt": "",  # LCM works best with minimal negative
+        "negative_prompt": "",
         "width": 512,
         "height": 512,
+        "portrait": (512, 768),
+        "landscape": (768, 512),
         "cfg": 1.5,
         "sampler": "lcm",
         "scheduler": "normal",
         "steps": 6,
-        "vae": None,  # Use checkpoint's built-in VAE
+        "vae": "vae-ft-mse-840000-ema-pruned.safetensors",
     },
     "flux": {
         "quality_prefix": "",
-        "negative_prompt": "",  # Flux doesn't use negative prompts effectively
+        "negative_prompt": "",
         "width": 1024,
         "height": 1024,
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
         "cfg": 3.5,
         "sampler": "euler",
         "scheduler": "simple",
@@ -604,21 +620,25 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "negative_prompt": "",
         "width": 1024,
         "height": 1024,
-        "cfg": 1.0,  # Schnell uses low CFG
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
+        "cfg": 1.0,
         "sampler": "euler",
         "scheduler": "simple",
-        "steps": 4,  # Schnell is a distilled model, very few steps
+        "steps": 4,
         "vae": "ae.safetensors",
     },
     "zimage": {
         "quality_prefix": "",
-        "negative_prompt": "",  # Turbo models work best without negative prompts
+        "negative_prompt": "",
         "width": 1024,
         "height": 1024,
-        "cfg": 1.0,  # Very low CFG for turbo
+        "portrait": (832, 1216),
+        "landscape": (1216, 832),
+        "cfg": 1.0,
         "sampler": "euler",
         "scheduler": "simple",
-        "steps": 4,  # ZImageTurbo is a distilled model
+        "steps": 4,
         "vae": "ae.safetensors",
     },
 }
@@ -731,6 +751,30 @@ def get_model_generation_defaults(model_name: str, base_model: str | None = None
     defaults["family"] = family
 
     return defaults
+
+
+def resolve_orientation(family: str | None, orientation: str = "square") -> tuple[int, int]:
+    """Get width/height for a model family and orientation.
+
+    Args:
+        family: Model family key (e.g. "pony", "sd15", "sdxl") or None for default
+        orientation: One of "square", "portrait", "landscape"
+
+    Returns:
+        (width, height) tuple
+    """
+    defaults = MODEL_FAMILY_DEFAULTS.get(family or "sdxl", MODEL_FAMILY_DEFAULTS["sdxl"])
+    w: int = defaults["width"]
+    h: int = defaults["height"]
+    fallback = (w, h)
+
+    if orientation == "portrait":
+        pair: tuple[int, int] = defaults.get("portrait", fallback)
+        return pair
+    if orientation == "landscape":
+        pair = defaults.get("landscape", fallback)
+        return pair
+    return fallback
 
 
 def get_comfyui_url() -> str:
