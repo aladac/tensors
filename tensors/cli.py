@@ -975,7 +975,8 @@ def generate(  # noqa: PLR0915
             console.print(f"[dim]Enhanced negative: {truncated}[/dim]")
 
     # ---- Resolve preset defaults for None params (both remote and local need these) ----
-    from tensors.config import resolve_orientation, resolve_remote as do_resolve_remote  # noqa: PLC0415
+    from tensors.config import resolve_orientation  # noqa: PLC0415
+    from tensors.config import resolve_remote as do_resolve_remote
 
     # Use already-detected family_defaults from DB lookup above (not filename guessing)
     if family_defaults:
