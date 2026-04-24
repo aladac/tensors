@@ -794,7 +794,9 @@ def generate(  # noqa: PLR0915
     lora_strength: Annotated[float, typer.Option("--lora-strength", help="LoRA strength")] = 0.8,
     negative: Annotated[str, typer.Option("-n", "--negative-prompt", help="Negative prompt")] = "",
     count: Annotated[int, typer.Option("-c", "--count", help="Number of images to generate")] = 1,
-    rating: Annotated[str | None, typer.Option("--rating", "-R", help="Content rating: safe, questionable, explicit (Pony/Illustrious)")] = None,
+    rating: Annotated[
+        str | None, typer.Option("--rating", "-R", help="Content rating: safe, questionable, explicit (Pony/Illustrious)")
+    ] = None,
     no_quality: Annotated[bool, typer.Option("--no-quality", help="Disable auto quality tags")] = False,
     no_negative: Annotated[bool, typer.Option("--no-negative", help="Disable auto negative prompt")] = False,
     output: Annotated[Path | None, typer.Option("-o", "--output", help="Save path (default: current dir)")] = None,
@@ -1120,11 +1122,7 @@ def generate(  # noqa: PLR0915
                 if output:
                     img_data = get_image(str(img_path))
                     if img_data:
-                        save_path = (
-                            output
-                            if count == 1
-                            else output.parent / f"{output.stem}_{i + 1:03d}{output.suffix}"
-                        )
+                        save_path = output if count == 1 else output.parent / f"{output.stem}_{i + 1:03d}{output.suffix}"
                         save_path.write_bytes(img_data)
                         saved_path = save_path
                         all_saved.append(save_path)
@@ -1482,8 +1480,12 @@ def db_cache(
 
 @db_app.command("list")
 def db_list(
-    model_type: Annotated[str | None, typer.Option("-t", "--type", help="Filter by model type (Checkpoint, LORA, VAE, etc.)")] = None,
-    base: Annotated[str | None, typer.Option("-b", "--base", help="Filter by base model (Pony, Illustrious, SDXL 1.0, SD 1.5, etc.)")] = None,
+    model_type: Annotated[
+        str | None, typer.Option("-t", "--type", help="Filter by model type (Checkpoint, LORA, VAE, etc.)")
+    ] = None,
+    base: Annotated[
+        str | None, typer.Option("-b", "--base", help="Filter by base model (Pony, Illustrious, SDXL 1.0, SD 1.5, etc.)")
+    ] = None,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
 ) -> None:
     """List local files with CivitAI info.
