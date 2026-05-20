@@ -302,3 +302,48 @@ def remote_download_status(
             return result
     except (httpx.HTTPStatusError, httpx.RequestError):
         return None
+
+
+def remote_db_files(
+    remote: str,
+    *,
+    console: Console | None = None,
+) -> list[dict[str, Any]] | None:
+    """Fetch the local-files index from a remote tensors server's DB.
+
+    Returns the same shape as Database.list_local_files() but reflecting the
+    remote host's SQLite DB rather than ours.
+
+    Args:
+        remote: Remote name or URL (resolved via config)
+        console: Rich console for error output
+
+    Returns:
+        List of file dicts, or None on connection / API error
+    """
+    base_url = resolve_remote(remote)
+    if not base_url:
+        if console:
+            console.print("[red]Error: Could not resolve remote server[/red]")
+        return None
+
+    try:
+        with _build_client(base_url) as client:
+            response = client.get("/api/db/files")
+            response.raise_for_status()
+            result: list[dict[str, Any]] = response.json()
+            return result
+    except httpx.HTTPStatusError as e:
+        if console:
+            console.print(f"[red]Remote API error: {e.response.status_code}[/red]")
+            try:
+                detail = e.response.json().get("detail", "")
+                if detail:
+                    console.print(f"  [yellow]{detail}[/yellow]")
+            except Exception:
+                pass
+        return None
+    except httpx.RequestError as e:
+        if console:
+            console.print(f"[red]Remote connection error: {e}[/red]")
+        return None

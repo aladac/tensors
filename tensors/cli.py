@@ -2600,27 +2600,57 @@ def db_cache(
 
 
 @db_app.command("list")
-def db_list(
+def db_list(  # noqa: PLR0915
     model_type: Annotated[
         str | None, typer.Option("-t", "--type", help="Filter by model type (Checkpoint, LORA, VAE, etc.)")
     ] = None,
     base: Annotated[
         str | None, typer.Option("-b", "--base", help="Filter by base model (Pony, Illustrious, SDXL 1.0, SD 1.5, etc.)")
     ] = None,
+    remote: Annotated[
+        str | None, typer.Option("-r", "--remote", help="Remote server name or URL (overrides default_remote)")
+    ] = None,
+    local: Annotated[
+        bool, typer.Option("--local", help="Force read from local DB, ignoring default_remote")
+    ] = False,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
 ) -> None:
-    """List local files with CivitAI info.
+    """List files indexed in the tensors DB.
+
+    Defaults to the configured remote (config.toml default_remote) so the
+    table reflects what's actually on the generation host. Pass --local to
+    inspect the local SQLite DB on this machine instead. If no remote is
+    configured and --local is not passed, falls back to local silently.
 
     Examples:
-        tsr db list                          # All local files
-        tsr db list -t Checkpoint            # Only checkpoints
-        tsr db list -t LORA                  # Only LoRAs
-        tsr db list -t Checkpoint -b Pony    # Pony checkpoints only
-        tsr db list -b "SDXL 1.0"           # All SDXL 1.0 models
+        tsr db list                          # Remote (or local if no default_remote)
+        tsr db list --local                  # Force local DB
+        tsr db list -r junkpile              # Explicit remote
+        tsr db list -t Checkpoint -b Pony    # Filter, default source
+        tsr db list -b "SDXL 1.0"            # All SDXL 1.0 models
     """
-    with Database() as db:
-        db.init_schema()
-        files = db.list_local_files()
+    from tensors.config import resolve_remote as do_resolve_remote  # noqa: PLC0415
+
+    # Resolution precedence: --local wins; else explicit -r; else default_remote; else local.
+    remote_url: str | None = None
+    if not local:
+        remote_url = do_resolve_remote(remote) if remote else do_resolve_remote(None)
+
+    files: list[dict[str, Any]] | None
+    if remote_url:
+        from tensors.remote import remote_db_files  # noqa: PLC0415
+
+        if not json_output:
+            console.print(f"[dim]Remote: {remote_url}[/dim]")
+        files = remote_db_files(remote or remote_url, console=console)
+        if files is None:
+            raise typer.Exit(1)
+        source_label = "Remote Files"
+    else:
+        with Database() as db:
+            db.init_schema()
+            files = db.list_local_files()
+        source_label = "Local Files"
 
     # Apply filters (case-insensitive substring match)
     if model_type:
@@ -2635,17 +2665,18 @@ def db_list(
         return
 
     if not files:
-        console.print("[yellow]No files found. Try 'tsr db scan' or adjust filters.[/yellow]")
+        hint = "Remote DB is empty" if remote_url else "Try 'tsr db scan'"
+        console.print(f"[yellow]No files found. {hint} or adjust filters.[/yellow]")
         return
 
-    title = "Local Files"
+    title = source_label
     if model_type or base:
         parts = []
         if model_type:
             parts.append(model_type)
         if base:
             parts.append(base)
-        title = f"Local Files ({', '.join(parts)})"
+        title = f"{source_label} ({', '.join(parts)})"
 
     table = Table(title=title, show_header=True, header_style="bold magenta")
     table.add_column("Path", style="cyan", max_width=50)
