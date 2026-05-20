@@ -1080,7 +1080,16 @@ def generate(  # noqa: PLR0915
     # which also skips the validation/resolution step in that path. Doing it
     # here means each task receives a canonical filename and ComfyUI's strict
     # loaders accept the request first try.
-    if model and not remote:
+    #
+    # Skip validation entirely when a remote dispatch will happen — either an
+    # explicit -r/--remote flag or default_remote from config. The server-side
+    # validator on the remote tensors API will catch missing models there.
+    # Without this, a config with `default_remote = "runpod"` would still hit
+    # the local ComfyUI for the availability check and fail on models that
+    # only exist on the remote host.
+    from tensors.config import resolve_remote as do_resolve_remote  # noqa: PLC0415
+
+    if model and not do_resolve_remote(remote):
         # Detect family for the right loader bucket (checkpoints vs diffusion_models).
         # Mirrors the lookup _run_generation does on entry.
         from tensors.db import Database  # noqa: PLC0415
@@ -1371,6 +1380,8 @@ def _run_generation(  # noqa: PLR0915
     """
     import random as rng  # noqa: PLC0415
 
+    from tensors.config import resolve_remote as do_resolve_remote  # noqa: PLC0415
+
     # ---- Detect model family and enhance prompt/negative ----
     family_defaults: dict[str, Any] = {}
     model_family: str | None = None
@@ -1400,7 +1411,10 @@ def _run_generation(  # noqa: PLR0915
     # available remotely ("v11Softcore"), and offers a fuzzy "did you mean" hint
     # instead of forwarding the request to ComfyUI for a generic 400 rejection.
     # Skipped in --json mode and for remote dispatches (server already validates).
-    if model and not json_output and not remote:
+    # "Remote dispatch" includes both -r/--remote and default_remote in config —
+    # otherwise users with default_remote set hit local ComfyUI for a check that
+    # should be deferred to the remote server.
+    if model and not json_output and not do_resolve_remote(remote):
         # Returns possibly-rewritten names so bare inputs like `-m lust_v10`
         # silently resolve to the canonical `lust_v10.safetensors` filename
         # before being forwarded to ComfyUI's strict CLIPLoader / UNETLoader.
@@ -1490,7 +1504,6 @@ def _run_generation(  # noqa: PLR0915
 
     # ---- Resolve preset defaults for None params (both remote and local need these) ----
     from tensors.config import resolve_orientation  # noqa: PLC0415
-    from tensors.config import resolve_remote as do_resolve_remote  # noqa: PLC0415
 
     # Use already-detected family_defaults from DB lookup above (not filename guessing)
     if family_defaults:
