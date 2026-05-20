@@ -576,7 +576,6 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler_ancestral",
         "scheduler": "normal",
         "steps": 25,
-        "vae": "ponyStandardVAE_v10.safetensors",
     },
     "illustrious": {
         "quality_prefix": "masterpiece, best quality, highres",
@@ -589,7 +588,6 @@ MODEL_FAMILY_DEFAULTS: dict[str, dict[str, Any]] = {
         "sampler": "euler_ancestral",
         "scheduler": "normal",
         "steps": 25,
-        "vae": "illustriousXLV20_v10.safetensors",
     },
     "sdxl": {
         "quality_prefix": "",
