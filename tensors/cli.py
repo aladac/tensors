@@ -2610,9 +2610,7 @@ def db_list(  # noqa: PLR0915
     remote: Annotated[
         str | None, typer.Option("-r", "--remote", help="Remote server name or URL (overrides default_remote)")
     ] = None,
-    local: Annotated[
-        bool, typer.Option("--local", help="Force read from local DB, ignoring default_remote")
-    ] = False,
+    local: Annotated[bool, typer.Option("--local", help="Force read from local DB, ignoring default_remote")] = False,
     json_output: Annotated[bool, typer.Option("--json", "-j", help="Output as JSON")] = False,
 ) -> None:
     """List files indexed in the tensors DB.
